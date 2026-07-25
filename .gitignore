@@ -1,0 +1,48 @@
+# --- 解析対象バイナリ・ログ（リポジトリに入れない） ---
+# APK / 逆コンパイル成果物は再取得可能かつ配布不可のため除外
+/artifacts/
+*.apk
+*.aab
+*.dex
+*.so
+
+# HCI スヌープログ（端末固有情報を含むため除外）
+*.log
+*.pcap
+*.pcapng
+*.btsnoop
+
+# 解析ツールのバイナリ（各自の環境で導入する）
+/.tools/
+
+# --- Android / Gradle ---
+.gradle/
+build/
+local.properties
+captures/
+.cxx/
+*.jks
+*.keystore
+
+# --- Python（解析スクリプト用） ---
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# --- Node.js（Matter ブリッジ: tools/pi/matter） ---
+node_modules/
+dist/
+npm-debug.log*
+# 実際の設定にはローカル固有の器具名などが入るので入れない（config.example.json は入れる）
+/tools/pi/matter/config.json
+
+# --- JetBrains / エディタ ---
+.idea/
+*.iml
+.vscode/
+
+# --- OS ---
+Thumbs.db
+Desktop.ini
+.DS_Store

@@ -1,0 +1,51 @@
+[Unit]
+Description=ODELIC Matter bridge (exposes odelicd lights to Matter)
+Documentation=https://github.com/caliljp/odelic-re-connected
+# odelicd の HTTP API に依存する。落ちていても起動はする（503 を返して待つ）
+After=network-online.target odelicd.service
+Wants=odelicd.service
+
+[Service]
+Type=simple
+EnvironmentFile=-/etc/default/odelic-matter
+WorkingDirectory=/opt/odelic-matter
+ExecStart=/usr/bin/node /opt/odelic-matter/dist/src/main.js --config /etc/odelic-matter/config.json
+
+# ⭐ BLE を一切使わないので root は不要。odelicd（root）と違い専用ユーザーで動かす
+User=odelic-matter
+Group=odelic-matter
+
+# フェアリング情報の保存先。⚠️ 消すと再 commissioning が必要になる
+StateDirectory=odelic-matter
+StateDirectoryMode=0700
+Environment=MATTER_STORAGE_PATH=/var/lib/odelic-matter
+# matter.js の既定は DEBUG で journald が埋まる。debug にすると詳細が出る
+Environment=MATTER_LOG_LEVEL=notice
+
+Restart=always
+RestartSec=5
+
+# ⚠️ Pi 3 は RAM 1 GB。odelicd を OOM の犠牲にしないため、
+#    こちらに上限を付けて OOM の狙われやすさも上げておく
+MemoryMax=320M
+OOMScoreAdjust=200
+
+# BLE も raw HCI も使わないので権限を絞れる
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+# Matter は IPv6 + mDNS(5353) + 5540/udp を使う。
+# ⚠️ AF_NETLINK が必須。Node の os.networkInterfaces()（getifaddrs）が netlink を使うので、
+#    落とすと mDNS が "MdnsService unavailable due to initialization error" で死ぬ
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
+
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,77 @@
+{
+  // ---------------------------------------------------------------- odelicd
+  // ⚠️ odelicd は無認証なので localhost に閉じる
+  "odelicd": "http://127.0.0.1:8080",
+
+  // `GET /info` のポーリング間隔（ms）。⭐ このエンドポイントは BLE を使わない
+  // （キャッシュを読むだけ）ので短くても器具に負荷はかからない
+  "pollMs": 1000,
+
+  // 壁スイッチでの変更を拾うための定期的な状態要求（秒）。0 で無効。
+  // ⚠️ **これだけが定期的に BLE を消費する**（1 分に 1 通・往復 50〜78 ms）。
+  //    HCI ログを採取して通信を測るときは 0 にしておく
+  "statusRefreshSec": 60,
+
+  // これを超えて器具が見えなければ Matter から撤去する（秒）。
+  // 一時的な取りこぼしで Google Home からライトが消えないよう猶予を置く
+  "missingGraceSec": 600,
+
+  // odelicd の `?wait=` に渡す ms。0 なら収束を待たずに送信の成否だけを見る。
+  // ⭐ 実測の収束は 277〜320 ms（docs C33）なので 1500 は余裕がある
+  "waitMs": 1500,
+
+  // 明るさと色温度を 1 通に合成する窓（ms）。
+  // ⭐ Matter は MoveToLevel と MoveToColorTemperature を別々に送ってくるが、
+  //    プロトコルは 1 コマンドで両方を運ぶ（0xC0 sub 0）ので必ずまとめる
+  "debounceMs": 120,
+
+  // 全器具が同じ指示なら target=all を 1 通にまとめる（docs/07-matter.md §7-3）
+  "coalesceAll": true,
+
+  // ---------------------------------------------------------------- 明るさ軸
+  // 明るさ軸の下端を常夜灯に割り当てる割合（%）。
+  // ⚠️ ここちょうどの値（既定なら「30%」）は境界に当たる。Matter level への丸め方は
+  //    コントローラ依存なので、「30% にして」を確実に主灯にしたいなら 25 に下げる
+  "nightBandPercent": 30,
+
+  // ---------------------------------------------------------------- 色温度
+  // ✅ 製品スペックで確認済み: 電球色 2700K 〜 昼光色 6500K
+  "colorTempMinKelvin": 2700,
+  "colorTempMaxKelvin": 6500,
+  // ✅ 実機の目視で確認済み（2026-07-26）: color 0% が電球色だった。false で正しい
+  "colorTempInverted": false,
+
+  // ---------------------------------------------------------------- Matter
+  "matter": {
+    // 0xFFF1 = テスト VID。⚠️ Google Home Developer Console に Matter integration を
+    //          登録しないと Google Home が commissioning を拒否する
+    "vendorId": 65521,
+    "productId": 32769,
+    "port": 5540,
+    "passcode": 20202021,
+    "discriminator": 3840,
+    // フェアリング情報の保存先。⚠️ 消すと再 commissioning が必要になる
+    "storagePath": "/var/lib/odelic-matter",
+    "vendorName": "odelic-re-connected",
+    "productName": "ODELIC Mesh Bridge"
+  },
+
+  // ---------------------------------------------------------------- 器具
+  // 器具は odelicd が自動で見つけるので、書くのは名前と例外だけ。
+  // ⭐ ここに無い MAC の器具も「ODELIC <MAC 下 6 桁>」という名前で自動的に出る
+  "fixtures": {
+    "EC:C5:7F:81:DE:CD": { "name": "ダイニングの照明" },
+    "EC:C5:7F:80:28:A6": { "name": "リビングの照明" }
+
+    // 既定から外れる器具だけ明示する:
+    //
+    // 調光のみの器具として出す（色温度スライダーを出さない）
+    // "AA:BB:CC:DD:EE:01": { "name": "廊下", "deviceType": "dimmable" },
+    //
+    // 常夜灯を使わない（明るさ軸の下端も主灯 5〜15% に割り当てる）
+    // "AA:BB:CC:DD:EE:02": { "name": "書斎", "nightLight": false },
+    //
+    // Matter に出さない
+    // "AA:BB:CC:DD:EE:03": { "exclude": true }
+  }
+}

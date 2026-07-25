@@ -1,0 +1,34 @@
+[Unit]
+Description=ODELIC CONNECTED LIGHTING control daemon
+Documentation=https://github.com/caliljp/odelic-re-connected
+After=bluetooth.service network-online.target
+Requires=bluetooth.service
+
+[Service]
+Type=simple
+# ID（HOMEID + パスワード）は設定ファイルに置く。
+# パスワードを含むので unit ファイルには書かない。
+EnvironmentFile=/etc/default/odelicd
+ExecStart=/usr/bin/python3 /opt/odelicd/odelicd.py \
+    --id ${ODELIC_ID} \
+    --port ${ODELIC_PORT} \
+    --group ${ODELIC_GROUP} \
+    --resend ${ODELIC_RESEND}
+
+# hcitool / btmgmt で raw HCI を叩くため root が必要
+# （BlueZ の D-Bus アドバタイズは Pi 3 では使えない。docs C19-5）
+User=root
+
+# 広告アドレスの永続化先 /var/lib/odelicd を自動で用意する。
+# 器具がコントローラのアドレスを記憶するため使い回す必要がある（docs C19-7）
+StateDirectory=odelicd
+StateDirectoryMode=0700
+
+Restart=always
+RestartSec=5
+
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
