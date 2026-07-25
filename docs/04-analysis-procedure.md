@@ -249,7 +249,7 @@ Settings.HOMEID  Define.PASSWORD
 
 結論だけ再掲する。アプリの ID 表示 8 桁が
 **上位 4 桁 = HOMEID（10 進 → LE 4 バイト）／下位 4 桁 = パスワード（ASCII 4 バイト）**。
-現在の ID `99833900` → HOMEID `FF 26 00 00` / パスワード `33 39 30 30`。
+現在の ID `12345678` → HOMEID `D2 04 00 00` / パスワード `35 36 37 38`。
 
 ID そのものは APK に定数として埋め込まれておらず、SharedPreferences に保存される
 （既定値のみ `"1111"` / `"9999"` がコード上にある）。
@@ -422,11 +422,11 @@ python tools/btsnoop.py sent artifacts/btsnoop_hci.log
 # ③ バイト差分。どのオフセットが何に対応するか
 python tools/btsnoop.py diff artifacts/btsnoop_hci.log
 
-# ④ HOMEID を探す（ID 表示 99833900 → HOMEID 9983 = 0x26FF → LE で FF 26）
-python tools/btsnoop.py find artifacts/btsnoop_hci.log FF26 26FF
+# ④ HOMEID を探す（ID 表示 12345678 → HOMEID 1234 = 0x04D2 → LE で FF 26）
+python tools/btsnoop.py find artifacts/btsnoop_hci.log FF26 04D2
 
-# ⑤ パスワードの ASCII を探す（"3900" → 33 39 30 30）
-python tools/btsnoop.py find artifacts/btsnoop_hci.log 33393030
+# ⑤ パスワードの ASCII を探す（"5678" → 35 36 37 38）
+python tools/btsnoop.py find artifacts/btsnoop_hci.log 35363738
 
 # ⑤ 操作とパケットの対応づけ
 python tools/btsnoop.py timeline artifacts/btsnoop_hci.log
@@ -459,10 +459,10 @@ btcommon.eir_ad.entry.type == 0xff
 # 送信したアドバタイズデータの設定
 bthci_cmd.opcode == 0x2008
 
-# HOMEID の探索（ID 表示 99833900 → HOMEID 9983 = 0x26FF → リトルエンディアン）
+# HOMEID の探索（ID 表示 12345678 → HOMEID 1234 = 0x04D2 → リトルエンディアン）
 frame contains ff:26
 
-# パスワードの ASCII（"3900"）
+# パスワードの ASCII（"5678"）
 frame contains 33:39:30:30
 
 # 器具の MAC（Pairlink 系の OUI）
@@ -512,7 +512,7 @@ Android の HCI スヌープログを解析する。Wireshark の代わりでは
   - 静的解析の結論どおりなら「**△ ハイブリッド**」判定になるのが正しい
 - アドバタイズ送信の継続時間（最短/中央/最長）→ I1（再送設計の欠如）の裏付け
 - 受信元のユニーク数と件数の偏り → I2・S3（器具の取りこぼし）の定量化
-- 検出された HOMEID の一覧 → 自分のネットワーク（9983）かどうかの切り分け
+- 検出された HOMEID の一覧 → 自分のネットワーク（1234）かどうかの切り分け
 - `ADV_PHONE` の出現 → C17-2（Peripheral へのフォールバック）が起きたかどうか
 
 **`diff` の読み方**
@@ -535,7 +535,7 @@ Android の HCI スヌープログを解析する。Wireshark の代わりでは
 実機ログが無い状態でパーサの動作を確かめるためのもの。
 **静的解析で判明した実際の形式**を模擬して出力する。
 
-- 器具の `ADV_CONNECTABLE` ビーコン（既知の OUI・HOMEID 9983）
+- 器具の `ADV_CONNECTABLE` ビーコン（既知の OUI・HOMEID 1234）
 - Central 参加タイムアウト → `ADV_PHONE` へのフォールバック（C17-2）
 - `LE Connection Complete`（GATT 接続の確立）
 - ATT Write Command / Notification（ペイロードは暗号化を模擬）

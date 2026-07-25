@@ -16,7 +16,7 @@ Raspberry Pi 上で常駐し、器具との GATT 接続を維持したまま HTT
 
 ## 使い方
 
-    sudo python3 odelicd.py --id 99833900 --port 8080
+    sudo python3 odelicd.py --id 12345678 --port 8080
 
     curl -X POST localhost:8080/on
     curl -X POST localhost:8080/off
@@ -2727,7 +2727,7 @@ def disconnect_stale_links(bus) -> int:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="ODELIC 照明制御デーモン")
-    ap.add_argument("--id", required=True, help="アプリ表示の 8 桁 ID（例 99833900）")
+    ap.add_argument("--id", required=True, help="アプリ表示の 8 桁 ID（例 12345678）")
     ap.add_argument("--port", type=int, default=8080, help="HTTP ポート（既定 8080）")
     ap.add_argument("--bind", default="0.0.0.0", help="待ち受けアドレス")
     ap.add_argument("--group", type=int, default=0, help="操作対象のグループ番号")

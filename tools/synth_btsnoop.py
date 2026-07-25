@@ -31,8 +31,9 @@ FLAG_RECV_EVT = 0x03  # bit0=1(受信) bit1=1(イベント)
 COMPANY_ID = 0x0000  # MeshCommon.createAdvertiseData の addManufacturerData(0, ...)
 PAIRLINK_MAGIC = bytes([0xC0, 0xFF])  # flow_control_enable が常に false なので C0
 
-# HOMEID 9983（アプリの ID 表示 99833900 の上位 4 桁）をリトルエンディアン 4 バイトに
-HOMEID = (9983).to_bytes(4, "little")  # FF 26 00 00
+# HOMEID 1234（アプリの ID 表示 12345678 の上位 4 桁）をリトルエンディアン 4 バイトに
+# ここは合成ログ（パーサ検証用）なので実在しないダミー値でよい
+HOMEID = (1234).to_bytes(4, "little")  # D2 04 00 00
 PHONE_MAC = bytes([0x1A, 0x2B, 0x3C, 0x4D, 0x5E, 0x6F])
 
 ADV_PHONE = 0x05
@@ -253,7 +254,7 @@ def main(argv: list[str]) -> int:
     print(f"  python tools/btsnoop.py summary {out}")
     print(f"  python tools/btsnoop.py recv {out} --mfg-only")
     print(f"  python tools/btsnoop.py timeline {out}")
-    print(f"  python tools/btsnoop.py find {out} C0FF05 FF260000")
+    print(f"  python tools/btsnoop.py find {out} C0FF05 D2040000")
     return 0
 
 

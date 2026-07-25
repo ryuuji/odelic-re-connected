@@ -42,6 +42,9 @@ const BRIDGE_UNIQUE_ID = "odelicmatterbridge01";
 export const BRIDGE_VERSION = "0.1.0";
 const BRIDGE_SOFTWARE_VERSION = 1;
 
+/** `/metrics` を引く間隔（ポーリング何回ごと）。absent はゆっくり変わる */
+const ABSENT_CHECK_EVERY = 10;
+
 export interface BridgeOptions {
     config: Config;
     log?: (msg: string) => void;
@@ -67,6 +70,16 @@ export class Bridge {
     private stopping = false;
     /** odelicd に届かない状態が続くときにログを埋めないための記憶 */
     private odelicdDown = false;
+    /**
+     * ⭐ 電源が落ちている器具（odelicd の `metrics.delivery[].absent`）。
+     *
+     * ⚠️ odelicd は器具を `devices` から削除しないので、`/info` に居ることは
+     * 生きている証拠にならない。これが無いと**通電が切れた器具が
+     * 「最後の状態でオンライン」のまま残る**。
+     */
+    private absent = new Set<string>();
+    /** `/metrics` は毎回引く必要がない（absent は 3 回の取りこぼしで決まる） */
+    private pollTick = 0;
 
     constructor(opts: BridgeOptions) {
         this.cfg = opts.config;
@@ -202,6 +215,20 @@ export class Bridge {
             this.log("odelicd に再接続しました");
         }
         this.lastInfo = info;
+
+        // ⭐ 通電が切れた器具を拾う。absent は 3 回の取りこぼしで決まるので毎回は要らない
+        if (this.pollTick++ % ABSENT_CHECK_EVERY === 0) {
+            const absent = await this.client.absentKeys();
+            if (absent !== null) {
+                for (const key of absent) {
+                    if (!this.absent.has(key)) this.log(`[!] 器具 ${key} が応答しません（通電が切れた可能性）`);
+                }
+                for (const key of this.absent) {
+                    if (!absent.has(key)) this.log(`器具 ${key} が復帰しました`);
+                }
+                this.absent = absent;
+            }
+        }
         await this.reconcile(info);
         await this.probeIdentityIfNeeded(info);
     }
@@ -251,7 +278,9 @@ export class Bridge {
                 this.fixtures.set(mac, fixture);
                 this.log(`＋ Matter に追加: ${fixture.describe()} — ${cap.reason}`);
             }
-            await fixture.applyFromDevice(device, info.connected);
+            // ⭐ 通電が切れている器具は「状態不明」として扱う（P4: 嘘をつかない）
+            const alive = info.connected && !this.absent.has(device.key.toUpperCase());
+            await fixture.applyFromDevice(device, alive);
         }
 
         // 見えなくなった器具。すぐ消さず Reachable = false にして猶予を置く

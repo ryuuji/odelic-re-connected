@@ -45,9 +45,9 @@ Pi では `libnative-lib.so` を流用できない（Android の Bionic libc 依
 
 ```
 器具 → スマホ:  01 19 F3 37 07 C9 ...（16 バイト・不透明）
-器具 → スマホ:  01 00 FF 26 00 00                        ← GET_PASSWORD
+器具 → スマホ:  01 00 D2 04 00 00                        ← GET_PASSWORD
 スマホ → 器具:  02 19 85 E2 14 14 ...（16 バイト・不透明）
-スマホ → 器具:  02 00 FF 26 00 00 33 39 30 30            ← ★ パスワードは平文
+スマホ → 器具:  02 00 D2 04 00 00 35 36 37 38            ← ★ パスワードは平文
 ```
 
 **[推測]** `0x00`（GET_PASSWORD / 平文パスワード）が実際の認証で、
@@ -166,7 +166,7 @@ python tools/btsnoop.py recv    artifacts\pi-scan.btsnoop --mfg-only
 | 確認項目 | 期待 |
 | --- | --- |
 | 器具のビーコン | `ADV_CONNECTABLE`(0x82) が受信できる |
-| HOMEID | **9983** がデコードされる |
+| HOMEID | **1234** がデコードされる |
 | 送信元 MAC | OUI が `00:95:69` または `F0:AC:D7` |
 | 台数 | 2 台（`device_num = 2` と一致するか） |
 | RSSI | 器具ごとの電波強度 → 接続先の選定材料 |
@@ -211,7 +211,7 @@ AD Type 0xFF (Manufacturer Specific Data)
   C0                 マジック（flow_control_enable は常に false）
   FF
   05                 ADV_PHONE
-  FF 26 00 00        HOMEID 9983（リトルエンディアン）
+  D2 04 00 00        HOMEID 1234（リトルエンディアン）
   xx xx xx xx xx xx  Pi の BT MAC
 ```
 
@@ -222,7 +222,7 @@ AD Type 0xFF (Manufacturer Specific Data)
 | 器具 → Pi | Pi → 器具 |
 | --- | --- |
 | `01 19 <16 バイト>` | `02 19 <16 バイト>` ← **中身が不明。ここが関門** |
-| `01 00 FF 26 00 00` | `02 00 FF 26 00 00 33 39 30 30` ← パスワード平文 |
+| `01 00 D2 04 00 00` | `02 00 D2 04 00 00 35 36 37 38` ← パスワード平文 |
 | `01 0A ...`（GET_VIRTUAL_ADDR） | `01 0A <own_vAddr 4 バイト>` |
 
 **まず `0x19` を無視して `0x00` にだけ応答してみる。**
@@ -322,8 +322,8 @@ GATT サーバの D-Bus 登録（`GattManager1`）は問題なく動く。
 ```
 器具 EC:C5:7F:81:DE:CD / EC:C5:7F:80:28:A6 が Pi に GATT 接続
   → 01 19 <16 バイト>          PERIPHERAL_LOGIN（★ 応答しない）
-  → 01 00 FF 26 00 00          GET_PASSWORD
-  ← 02 00 FF 26 00 00 33 39 30 30
+  → 01 00 D2 04 00 00          GET_PASSWORD
+  ← 02 00 D2 04 00 00 35 36 37 38
   → 01 01                       WELCOME（認証成功）
   → 01 0A 15 00 00 00           own_vAddr 割り当て
   → 01 02 ... 02 00             device_num = 2
@@ -404,7 +404,7 @@ GATT サーバの D-Bus 登録（`GattManager1`）は問題なく動く。
 scp tools/pi/odelicd.py tools/pi/odelicd.service tools/pi/install.sh odelic-re-connected:~/odelicd-install/
 
 # Pi 上で
-cd ~/odelicd-install && sudo ./install.sh 99833900 8080
+cd ~/odelicd-install && sudo ./install.sh 12345678 8080
 ```
 
 `install.sh` がやること。

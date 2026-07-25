@@ -18,17 +18,17 @@ Raspberry Pi 上で実行する。純正アプリの `join_mode = 1`（Periphera
 使い方:
 
     # まず観測だけ（何も送らない）。器具が接続してくるか確認する
-    sudo python3 mesh_peripheral.py --id 99833900
+    sudo python3 mesh_peripheral.py --id 12345678
 
     # 参加できたら状態要求を送る（最も安全な最初の一手）
-    sudo python3 mesh_peripheral.py --id 99833900 --send status
+    sudo python3 mesh_peripheral.py --id 12345678 --send status
 
     # 点灯・消灯
-    sudo python3 mesh_peripheral.py --id 99833900 --send on
-    sudo python3 mesh_peripheral.py --id 99833900 --send off
+    sudo python3 mesh_peripheral.py --id 12345678 --send on
+    sudo python3 mesh_peripheral.py --id 12345678 --send off
 
     # 明るさ 60% / 色温度 50%
-    sudo python3 mesh_peripheral.py --id 99833900 --send level --bright 60 --color 50
+    sudo python3 mesh_peripheral.py --id 12345678 --send level --bright 60 --color 50
 
 ★ 認証について（docs/02-protocol.md C19-2 で実機確認）
 
@@ -654,7 +654,7 @@ def main() -> int:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
-    ap.add_argument("--id", required=True, help="アプリ表示の 8 桁 ID（例 99833900）")
+    ap.add_argument("--id", required=True, help="アプリ表示の 8 桁 ID（例 12345678）")
     ap.add_argument(
         "--send",
         choices=("none", "status", "on", "off", "level", "blink"),

@@ -19,7 +19,7 @@
 
 使い方:
 
-    python tools/decrypt_recv.py artifacts/btsnoop_hci-20260725-154002.log 99833900
+    python tools/decrypt_recv.py artifacts/btsnoop_hci-20260725-154002.log 12345678
 
 `.so`（libnative-lib.so）の `cmd_handle` / `encry_data_handle` の
 逆アセンブルから再現した。詳細は docs/02-protocol.md の C21〜C23。
@@ -27,6 +27,7 @@
 
 from __future__ import annotations
 
+import os
 import struct
 import sys
 
@@ -170,7 +171,11 @@ def main() -> int:
         print(__doc__)
         return 1
     path = sys.argv[1]
-    display_id = sys.argv[2] if len(sys.argv) > 2 else "99833900"
+    # 認証情報をソースに埋めない。引数か環境変数 ODELIC_ID で渡す
+    display_id = sys.argv[2] if len(sys.argv) > 2 else os.environ.get("ODELIC_ID", "")
+    if not display_id:
+        print("第 2 引数に 8 桁 ID を指定してください（または export ODELIC_ID=<8桁ID>）", file=sys.stderr)
+        return 1
 
     homeid, pwd, KL, KE = make_keys(display_id)
     print(f"ID {display_id} → HOMEID {B.hexs(homeid)} / パスワード {B.hexs(pwd)}")

@@ -66,7 +66,7 @@ Raspberry Pi 上で **`.so` も SDK も使わない実装が全機能を達成�
 ### 手順（利用者から見た流れ）
 
 ```
-1. 純正アプリの「メニュー」画面を開く → 画面に "ID:99833900" と表示されている
+1. 純正アプリの「メニュー」画面を開く → 画面に "ID:12345678" と表示されている
 2. 新アプリの初期設定でその 8 桁を入力する
 3. 以上。器具の一覧・グループ・状態はすべて自動で読み取られる
 ```
@@ -85,12 +85,12 @@ MeshService.homeid = BleUtil.int2byte(Integer.parseInt(HOMEID));   // 10 進 →
 MeshService.pwd    = PASSWORD.getBytes();                          // ASCII 4 バイト
 ```
 
-つまり `99833900` なら
+つまり `12345678` なら
 
 | 項目 | 値 |
 | --- | --- |
-| HOMEID | `9983` → 10 進 9983 = 0x26FF → **`FF 26 00 00`**（リトルエンディアン） |
-| パスワード | `3900` → **`33 39 30 30`**（ASCII） |
+| HOMEID | `1234` → 10 進 1234 = 0x04D2 → **`D2 04 00 00`**（リトルエンディアン） |
+| パスワード | `5678` → **`35 36 37 38`**（ASCII） |
 
 → ここから LOGINKEY / EVENTKEY を導出する（[C21-2](02-protocol.md)）。
 
@@ -431,10 +431,10 @@ BLE 実機依存の部分と、そうでない部分を分ける。
    純正アプリのコードは使わない（案 D）。暗号は標準の AES-128-ECB で足りる
    ```kotlin
    // 純正アプリのメニュー画面に出ている 8 桁 ID をそのまま入力してもらう
-   val displayId = "99833900"
+   val displayId = "12345678"
    val homeid = ByteBuffer.allocate(4).order(ByteOrder.LITTLE_ENDIAN)
-       .putInt(displayId.substring(0, 4).toInt()).array()          // FF 26 00 00
-   val pwd = displayId.substring(4, 8).toByteArray(Charsets.US_ASCII)  // 33 39 30 30
+       .putInt(displayId.substring(0, 4).toInt()).array()          // D2 04 00 00
+   val pwd = displayId.substring(4, 8).toByteArray(Charsets.US_ASCII)  // 35 36 37 38
    val inter = byteArrayOf(homeid[0], pwd[0], homeid[1], pwd[1],
                            homeid[2], pwd[2], homeid[3], pwd[3])
    val loginKey = inter + "LOGINKEY".toByteArray()   // 受信ログインの復号・応答用

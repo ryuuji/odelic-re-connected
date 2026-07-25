@@ -25,6 +25,7 @@ device の vaddr[0] が不明な場合は 0..255 を総当たりする。
 
 from __future__ import annotations
 
+import os
 import struct
 import sys
 
@@ -90,7 +91,11 @@ def main() -> int:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
-    display_id = sys.argv[1] if len(sys.argv) > 1 else "99833900"
+    # ⚠️ 認証情報をソースに埋めない。引数か環境変数 ODELIC_ID で渡す
+    display_id = sys.argv[1] if len(sys.argv) > 1 else os.environ.get("ODELIC_ID", "")
+    if not display_id:
+        print("使い方: decrypt_full.py <8桁ID>   （または export ODELIC_ID=<8桁ID>）", file=sys.stderr)
+        return 1
     KE = event_key(display_id)
     print(f"ID {display_id} → EVENTKEY {KE.hex()}")
 

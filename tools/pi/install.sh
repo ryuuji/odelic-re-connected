@@ -2,7 +2,7 @@
 # odelicd を Raspberry Pi に常駐サービスとしてインストールする。
 #
 #   使い方: sudo ./install.sh <8桁ID> [ポート]
-#   例:     sudo ./install.sh 99833900 8080
+#   例:     sudo ./install.sh 12345678 8080
 #
 # 前提: odelicd.py と odelicd.service が同じディレクトリにあること。
 

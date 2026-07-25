@@ -19,7 +19,8 @@ shift || true
 
 SCRIPT=/tmp/mesh_peripheral.py
 OUT=/tmp/p2.btsnoop
-ID="${ODELIC_ID:-99833900}"
+# 認証情報をソースに埋めない
+ID="${ODELIC_ID:?8 桁 ID を ODELIC_ID で指定してください}"
 
 if [ ! -f "$SCRIPT" ]; then
     echo "[エラー] $SCRIPT がありません。scp してください。" >&2

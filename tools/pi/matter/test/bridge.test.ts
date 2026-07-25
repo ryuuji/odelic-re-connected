@@ -47,6 +47,8 @@ class StubOdelicd {
     connected = true;
     /** 次の操作をこの HTTP ステータスで失敗させる */
     failNextWith: number | null = null;
+    /** 通電が切れた器具の vAddr キー（odelicd の metrics.delivery[].absent 相当） */
+    absent = new Set<string>();
 
     private server: Server | undefined;
     private port = 0;
@@ -75,6 +77,14 @@ class StubOdelicd {
             }
             if (u.pathname === "/info" || u.pathname === "/") {
                 this.json(res, 200, this.info());
+                return;
+            }
+            if (u.pathname === "/metrics") {
+                const delivery: Record<string, { ewma: number; n: number; absent: boolean }> = {};
+                for (const d of this.devices) {
+                    delivery[d.key] = { ewma: 1, n: 10, absent: this.absent.has(d.key) };
+                }
+                this.json(res, 200, { delivery });
                 return;
             }
             this.json(res, 404, { error: "not found" });
@@ -466,6 +476,36 @@ describe("ブリッジの統合（偽 odelicd・BLE なし）", () => {
         //    ここでは「引き戻しの経路が例外なく走る」ことだけを見る
         await new Promise(r => setTimeout(r, 400));
         assert.equal(stub.commands()[0]!.path, "/on");
+    });
+
+    it("⭐⭐ 片方の通電が切れたら、その器具だけ Reachable = false になる", async () => {
+        // ⚠️ odelicd は器具を devices から削除しないので、/info に居ることは
+        //    生きている証拠にならない。metrics の absent を見ないと
+        //    **通電が切れた器具が「最後の状態でオンライン」のまま残る**
+        await quiesce(stub);
+        stub.absent.add("01000000"); // ダイニング（MAC_A）の電源が落ちた
+
+        await waitFor(
+            "ダイニングだけ Reachable が下がる",
+            () => bridge.fixtureOf(MAC_A)!.endpoint.state.bridgedDeviceBasicInformation.reachable === false,
+            15000,
+        );
+        // ⭐ もう片方は影響を受けない
+        assert.equal(
+            bridge.fixtureOf(MAC_B)!.endpoint.state.bridgedDeviceBasicInformation.reachable,
+            true,
+            "生きている器具まで offline にしてはいけない",
+        );
+        // ⭐ Matter からは消さない（一時的な停電で Google Home から消えると困る）
+        assert.ok(bridge.fixtureOf(MAC_A) !== undefined, "エンドポイントを消してはいけない");
+
+        // 復帰したら戻る
+        stub.absent.delete("01000000");
+        await waitFor(
+            "復帰して Reachable が戻る",
+            () => bridge.fixtureOf(MAC_A)!.endpoint.state.bridgedDeviceBasicInformation.reachable === true,
+            15000,
+        );
     });
 
     it("odelicd が落ちたら Reachable = false になる", async () => {

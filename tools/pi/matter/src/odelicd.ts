@@ -52,6 +52,17 @@ export interface OdelicInfo {
     uptime_sec: number;
 }
 
+/**
+ * `GET /metrics` のうちブリッジが使う部分。
+ *
+ * ⭐ `delivery[<vAddr>].absent` は odelicd が「状態要求に 3 回連続で応答がない」器具に
+ * 立てるフラグ。**電源が落ちている器具を見分ける唯一の手段**（odelicd は一度見つけた
+ * 器具を `devices` から削除しないので、`/info` に居ることは生きている証拠にならない）。
+ */
+export interface OdelicMetrics {
+    delivery: Record<string, { ewma: number; n: number; absent: boolean }>;
+}
+
 /** 操作の対象。odelicd の `?target=` に渡す文字列と 1:1。 */
 export type OdelicTarget = "all" | `group:${number}` | `dev:${string}`;
 
@@ -126,6 +137,27 @@ export class OdelicClient {
             const res = await fetch(this.url("/info"), { signal: AbortSignal.timeout(timeoutMs) });
             if (!res.ok) return null;
             return (await res.json()) as OdelicInfo;
+        } catch {
+            return null;
+        }
+    }
+
+    /**
+     * 電源が落ちている器具の vAddr キー集合を返す。⭐ **BLE を使わない。**
+     *
+     * ⚠️ `absent` は状態要求の応答から判定されるので、`statusRefreshSec = 0` だと
+     * 更新されない（操作したときだけ動く）。
+     */
+    async absentKeys(timeoutMs = 4000): Promise<Set<string> | null> {
+        try {
+            const res = await fetch(this.url("/metrics"), { signal: AbortSignal.timeout(timeoutMs) });
+            if (!res.ok) return null;
+            const m = (await res.json()) as OdelicMetrics;
+            const out = new Set<string>();
+            for (const [key, v] of Object.entries(m.delivery ?? {})) {
+                if (v.absent) out.add(key.toUpperCase());
+            }
+            return out;
         } catch {
             return null;
         }

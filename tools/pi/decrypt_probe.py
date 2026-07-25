@@ -16,6 +16,7 @@ __stack_chk_fail を使う関数は落ちる可能性がある。その場合は
 from __future__ import annotations
 
 import ctypes
+import os
 import struct
 import sys
 
@@ -86,9 +87,14 @@ def main() -> int:
         rc = dec(ctx, ct, out, len(ct))
         return out.raw[: len(ct)], rc
 
-    # --- 鍵（現在の ID 99833900）---
-    homeid = struct.pack("<I", 9983)  # FF 26 00 00
-    pwd = b"3900"
+    # --- 鍵（8 桁 ID から導出）---
+    # 認証情報をソースに埋めない。環境変数 ODELIC_ID で渡す
+    display_id = os.environ.get("ODELIC_ID", "")
+    if len(display_id) != 8 or not display_id.isdigit():
+        print("export ODELIC_ID=<8桁ID> を設定してください", file=sys.stderr)
+        return 1
+    homeid = struct.pack("<I", int(display_id[:4]))
+    pwd = display_id[4:].encode("ascii")
     KL = build_key(homeid, pwd, b"LOGINKEY")
     KE = build_key(homeid, pwd, b"EVENTKEY")
     print(f"鍵1(LOGIN): {hx(KL)}")

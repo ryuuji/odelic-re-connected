@@ -5,7 +5,7 @@
 # SupportedInstances = 0 になり使えない（mgmt Add Advertising が Invalid Parameters）。
 # そこで HCI コマンドを直接叩く。
 #
-#   使い方: ./adv_raw.sh on   [HOMEID10進] # 例: ./adv_raw.sh on 9983
+#   使い方: ./adv_raw.sh on   [HOMEID10進] # 例: ./adv_raw.sh on 1234
 #           ./adv_raw.sh off
 #           ./adv_raw.sh status
 #
@@ -17,7 +17,12 @@
 set -u
 
 ACTION="${1:-status}"
-HOMEID_DEC="${2:-9983}"
+# HOMEID をソースに埋めない。第 2 引数か環境変数 ODELIC_HOMEID で渡す
+HOMEID_DEC="${2:-${ODELIC_HOMEID:-}}"
+if [ -z "$HOMEID_DEC" ]; then
+    echo "エラー: HOMEID（10 進）を第 2 引数か ODELIC_HOMEID で指定してください" >&2
+    exit 1
+fi
 DEV=hci0
 
 OGF_LE=0x08

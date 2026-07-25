@@ -35,7 +35,7 @@ ODELIC「CONNECTED LIGHTING for HOME」対応照明器具を、BLE 経由で制�
 | [tools/pi/odelicd.py](tools/pi/odelicd.py) | ⭐ **常駐デーモン本体**（HTTP API で照明を制御） |
 | [tools/pi/matter/](tools/pi/matter/) | ⭐ **Matter ブリッジ**（Node.js + matter.js）。照明を Matter デバイスとして公開する。BLE は使わない |
 | [tools/pi/odelicd.service](tools/pi/odelicd.service) | systemd ユニット |
-| [tools/pi/install.sh](tools/pi/install.sh) | インストーラ（`sudo ./install.sh 99833900 8080`） |
+| [tools/pi/install.sh](tools/pi/install.sh) | インストーラ（`sudo ./install.sh 12345678 8080`） |
 | [tools/pi/mesh_peripheral.py](tools/pi/mesh_peripheral.py) | 検証用の単発実行版（`--send blink` など） |
 | [tools/pi/run-p2.sh](tools/pi/run-p2.sh) | 上記を `btmon` 記録付きで実行するラッパー |
 | [tools/pi/adv_raw.sh](tools/pi/adv_raw.sh) | raw HCI で `ADV_PHONE` を送る（BlueZ D-Bus の代替） |
@@ -71,7 +71,7 @@ python tools/btsnoop.py summary  artifacts/btsnoop_hci-<stamp>.log
 python tools/btsnoop.py timeline artifacts/btsnoop_hci-<stamp>.log
 
 # 暗号化された PDU まで復号して読む（第 2 引数はアプリ表示の 8 桁 ID）
-python tools/decrypt_recv.py artifacts/btsnoop_hci-<stamp>.log 99833900
+python tools/decrypt_recv.py artifacts/btsnoop_hci-<stamp>.log 12345678
 
 # ⭐ リンク 1 本 1 行の表（接続パラメータ・CPUR・切断理由・寿命分布）
 python tools/btsnoop.py conn    artifacts/pi-conn-<stamp>.btsnoop
