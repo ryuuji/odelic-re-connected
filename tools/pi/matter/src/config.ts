@@ -40,7 +40,15 @@ export interface Config {
      * 壁スイッチでの変更を拾う唯一の手段。HCI ログを採取して通信を測るときは 0 にする。
      */
     statusRefreshSec: number;
-    /** これを超えて見えない器具をエンドポイントから外す（秒） */
+    /**
+     * これを超えて見えない器具をエンドポイントから外す（秒）。**0 で撤去しない（既定）**。
+     *
+     * ⚠️ 撤去は `endpoint.delete()` で**永続データを消す**ので `uniqueId` が変わり、
+     * Google Home からは別デバイスになって部屋割り・名前・自動化が失われる。
+     * 壁スイッチで消えている器具は odelicd から見えないのが通常状態なので、
+     * 「見えない」を撤去の理由にしてはいけない。器具を本当に外したときは
+     * 名簿（`<storagePath>/fixtures.json`）から該当行を消して再起動する。
+     */
     missingGraceSec: number;
     /** odelicd の `?wait=` に渡す ms。0 なら収束を待たない */
     waitMs: number;
@@ -64,7 +72,8 @@ export const DEFAULT_CONFIG: Config = {
     // 壁スイッチでの変更を拾う。⚠️ BLE を 1 分に 1 通使う
     // （HCI ログを採取するときだけ 0 にする）
     statusRefreshSec: 60,
-    missingGraceSec: 600,
+    // ⚠️ 0 = 撤去しない。器具の永続化のため（上のコメント参照）
+    missingGraceSec: 0,
     waitMs: 1500,
     debounceMs: 120,
     coalesceAll: true,

@@ -21,6 +21,7 @@ import { after, before, describe, it } from "node:test";
 import { Bridge } from "../src/bridge.js";
 import { DEFAULT_CONFIG, type Config } from "../src/config.js";
 import { colorPercentToMireds, targetToMatterLevel } from "../src/mapping.js";
+import { loadRoster, rosterPath } from "../src/roster.js";
 
 // ------------------------------------------------------------------ 偽 odelicd
 
@@ -508,6 +509,15 @@ describe("ブリッジの統合（偽 odelicd・BLE なし）", () => {
         );
     });
 
+    it("⭐ 名簿が保存されている（次の起動でエンドポイントを復元できる）", () => {
+        const roster = loadRoster(rosterPath(storageDir));
+        const macs = roster.fixtures.map(f => f.mac).sort();
+        assert.deepEqual(macs, [MAC_A, MAC_B].sort(), `名簿: ${JSON.stringify(roster)}`);
+        // ⚠️ センサーは名簿にも入れない
+        assert.ok(!macs.includes(MAC_SENSOR));
+        assert.equal(roster.fixtures.find(f => f.mac === MAC_A)!.productCode, 0x2b);
+    });
+
     it("odelicd が落ちたら Reachable = false になる", async () => {
         await stub.close();
         await waitFor(
@@ -516,5 +526,89 @@ describe("ブリッジの統合（偽 odelicd・BLE なし）", () => {
             6000,
         );
         assert.equal(bridge.fixtureOf(MAC_B)!.endpoint.state.bridgedDeviceBasicInformation.reachable, false);
+    });
+});
+
+
+/**
+ * ⭐⭐ 一番守りたいシナリオ。
+ *
+ * 「壁スイッチで片方を消したまま Pi が再起動する」= odelicd の器具一覧に
+ * その器具が現れない状態でブリッジが起動する。このとき**エンドポイントが
+ * 消えてはいけない**（消えると uniqueId が変わり Google Home の設定が失われる）。
+ */
+describe("通電していない器具が再起動をまたいで残る", () => {
+    const stub = new StubOdelicd();
+    let storageDir: string;
+    let first: Bridge | undefined;
+    let second: Bridge | undefined;
+
+    before(async () => {
+        storageDir = mkdtempSync(join(tmpdir(), "odelic-matter-persist-"));
+        process.env.MATTER_STORAGE_PATH = storageDir;
+        stub.devices = [ceilingLight("01000000", MAC_A, 0), ceilingLight("02000000", MAC_B, 1)];
+        await stub.listen();
+    });
+
+    after(async () => {
+        await first?.stop();
+        await second?.stop();
+        await stub.close();
+        rmSync(storageDir, { recursive: true, force: true });
+    });
+
+    const makeBridge = (port: number): Bridge => {
+        const config: Config = {
+            ...DEFAULT_CONFIG,
+            odelicd: stub.baseUrl,
+            pollMs: 50,
+            waitMs: 0,
+            statusRefreshSec: 0,
+            matter: { ...DEFAULT_CONFIG.matter, port, storagePath: storageDir, discriminator: 3842 },
+            fixtures: { [MAC_A]: { name: "ダイニングの照明" }, [MAC_B]: { name: "リビングの照明" } },
+        };
+        return new Bridge({ config, log: msg => { if (process.env.BRIDGE_TEST_LOG) console.log(`    | ${msg}`); } });
+    };
+
+    it("1 回目の起動で 2 台が見つかり名簿に載る", async () => {
+        first = makeBridge(5601);
+        await first.start();
+        await waitFor("2 台そろう", () => first!.fixtureOf(MAC_A) !== undefined && first!.fixtureOf(MAC_B) !== undefined);
+        assert.equal(loadRoster(rosterPath(storageDir)).fixtures.length, 2);
+        await first.stop();
+        first = undefined;
+    });
+
+    it("⭐⭐ 片方の通電が切れた状態で再起動しても、両方のエンドポイントが残る", async () => {
+        // 壁スイッチで MAC_A を消した = odelicd から見えなくなる
+        stub.devices = [ceilingLight("02000000", MAC_B, 1)];
+
+        second = makeBridge(5602);
+        await second.start();
+
+        // ⭐ 見えていない MAC_A も名簿から復元されていること
+        assert.ok(second.fixtureOf(MAC_A) !== undefined, "通電していない器具のエンドポイントが消えた");
+        assert.ok(second.fixtureOf(MAC_B) !== undefined);
+
+        // ⭐ 見えていないほうは Reachable = false（嘘をつかない）
+        await waitFor(
+            "MAC_A が offline / MAC_B が online",
+            () =>
+                second!.fixtureOf(MAC_A)!.endpoint.state.bridgedDeviceBasicInformation.reachable === false &&
+                second!.fixtureOf(MAC_B)!.endpoint.state.bridgedDeviceBasicInformation.reachable === true,
+        );
+
+        // ⭐ しばらく待っても撤去されない（missingGraceSec = 0 が既定）
+        await new Promise(r => setTimeout(r, 800));
+        assert.ok(second.fixtureOf(MAC_A) !== undefined, "時間経過で撤去してはいけない");
+        assert.equal(loadRoster(rosterPath(storageDir)).fixtures.length, 2, "名簿から消してはいけない");
+    });
+
+    it("通電が戻れば Reachable = true になる", async () => {
+        stub.devices = [ceilingLight("01000000", MAC_A, 0), ceilingLight("02000000", MAC_B, 1)];
+        await waitFor(
+            "MAC_A が online に戻る",
+            () => second!.fixtureOf(MAC_A)!.endpoint.state.bridgedDeviceBasicInformation.reachable === true,
+        );
     });
 });

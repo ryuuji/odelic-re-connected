@@ -35,6 +35,7 @@ import {
 } from "./config.js";
 import { Fixture, type PendingCommand, describeCommand, sameCommand } from "./fixture.js";
 import { type CommandOutcome, OdelicClient, type OdelicInfo, type OdelicTarget } from "./odelicd.js";
+import { type Roster, loadRoster, rosterPath, saveRoster, upsert } from "./roster.js";
 
 /** Matter の BasicInformation に出す識別子。⚠️ serialNumber と uniqueId は別の値にする。 */
 const BRIDGE_SERIAL = "odelic-matter-bridge";
@@ -80,10 +81,20 @@ export class Bridge {
     private absent = new Set<string>();
     /** `/metrics` は毎回引く必要がない（absent は 3 回の取りこぼしで決まる） */
     private pollTick = 0;
+    /**
+     * ⭐ 一度見つけた器具の名簿（永続化）。
+     *
+     * ⚠️ odelicd は器具一覧をメモリにしか持たず、**壁スイッチで消えている器具は
+     * 再発見されない**。名簿が無いと、そういう器具のエンドポイントを復元できず、
+     * `endpoint.delete()` で `uniqueId` まで失って Google Home の設定が飛ぶ。
+     */
+    private roster: Roster = { version: 1, fixtures: [] };
+    private readonly rosterFile: string;
 
     constructor(opts: BridgeOptions) {
         this.cfg = opts.config;
         this.log = opts.log ?? (msg => console.log(msg));
+        this.rosterFile = rosterPath(this.cfg.matter.storagePath);
         this.client = new OdelicClient({
             baseUrl: this.cfg.odelicd,
             waitMs: this.cfg.waitMs,
@@ -135,7 +146,11 @@ export class Bridge {
             this.reportCommissioning();
         });
 
-        // 最初の 1 回はすぐ、その後は pollMs 間隔。
+        // ⭐ 名簿から先にエンドポイントを復元する。odelicd から見えていない器具も
+        //    Reachable = false で出しておく（消えると Google Home の設定が失われる）
+        await this.restoreFromRoster();
+
+        // 続いて現況を取り込む。その後は pollMs 間隔。
         // ⚠️ setInterval で await しないと**ポーリングが重なって**属性の書き戻しが
         //    交錯する（統合テストで実際に踏んだ）。必ず 1 周終えてから次を積む
         await this.poll();
@@ -151,6 +166,51 @@ export class Bridge {
         } else {
             this.log("statusRefreshSec = 0。BLE は操作のときだけ使います（壁スイッチの変更は追従しません）");
         }
+    }
+
+    /**
+     * 名簿にある器具のエンドポイントを作る。
+     *
+     * この時点では odelicd の状態を知らないので `Reachable = false`。
+     * 実際に見えたら `reconcile()` が状態を入れて `Reachable = true` にする。
+     */
+    private async restoreFromRoster(): Promise<void> {
+        this.roster = loadRoster(this.rosterFile, msg => this.log(`[!] ${msg}`));
+        if (this.roster.fixtures.length === 0) return;
+
+        for (const entry of this.roster.fixtures) {
+            const override = this.cfg.fixtures[entry.mac] ?? {};
+            const cap = capabilityOf(entry.productCode, override);
+            if (!cap.isLight) continue;
+            const fixture = await this.createFixture(entry.mac, override.name, cap, entry.product, entry.version);
+            await fixture.setReachable(false);
+            this.log(`◇ 名簿から復元: ${fixture.describe()}（まだ odelicd から見えていません）`);
+        }
+    }
+
+    /** エンドポイントを 1 個作って Aggregator に付ける。 */
+    private async createFixture(
+        mac: string,
+        name: string | undefined,
+        cap: ReturnType<typeof capabilityOf>,
+        product: string,
+        version: string,
+    ): Promise<Fixture> {
+        const fixture = new Fixture({
+            mac,
+            name,
+            capability: cap,
+            scale: lightScaleOf(this.cfg, cap.nightLight),
+            colorScale: colorScaleOf(this.cfg),
+            product,
+            version,
+            onDesiredChange: f => this.scheduleFlush(f),
+            log: msg => this.log(msg),
+        });
+        await this.aggregator.add(fixture.endpoint);
+        fixture.subscribe();
+        this.fixtures.set(fixture.mac, fixture);
+        return fixture;
     }
 
     /** ポーリングを 1 周ずつ直列に回す。 */
@@ -262,21 +322,18 @@ export class Bridge {
 
             let fixture = this.fixtures.get(mac);
             if (fixture === undefined) {
-                fixture = new Fixture({
-                    mac,
-                    name: override.name,
-                    capability: cap,
-                    scale: lightScaleOf(this.cfg, cap.nightLight),
-                    colorScale: colorScaleOf(this.cfg),
-                    product: device.product,
-                    version: device.version,
-                    onDesiredChange: f => this.scheduleFlush(f),
-                    log: msg => this.log(msg),
-                });
-                await this.aggregator.add(fixture.endpoint);
-                fixture.subscribe();
-                this.fixtures.set(mac, fixture);
+                fixture = await this.createFixture(mac, override.name, cap, device.product, device.version);
                 this.log(`＋ Matter に追加: ${fixture.describe()} — ${cap.reason}`);
+            }
+
+            // ⭐ 名簿に記録する。次回の起動でエンドポイントを復元できるようにする
+            if (upsert(this.roster, {
+                mac,
+                product: device.product,
+                productCode: device.product_code,
+                version: device.version,
+            }, new Date())) {
+                saveRoster(this.rosterFile, this.roster, msg => this.log(`[!] ${msg}`));
             }
             // ⭐ 通電が切れている器具は「状態不明」として扱う（P4: 嘘をつかない）
             const alive = info.connected && !this.absent.has(device.key.toUpperCase());
@@ -287,6 +344,12 @@ export class Bridge {
         for (const [mac, fixture] of [...this.fixtures]) {
             if (seen.has(mac)) continue;
             await fixture.setReachable(false);
+            // ⚠️ 既定（missingGraceSec = 0）では**撤去しない**。
+            //    `endpoint.delete()` は永続データを消すので uniqueId が変わり、
+            //    Google Home からは別デバイスになって部屋割り・名前・自動化が失われる。
+            //    壁スイッチで消えている器具は odelicd から見えないのが通常状態なので、
+            //    「見えない」を撤去の理由にしてはいけない
+            if (this.cfg.missingGraceSec <= 0) continue;
             const since = now - (this.lastPresent.get(mac) ?? now);
             if (since > this.cfg.missingGraceSec * 1000) {
                 this.log(`− Matter から撤去: ${fixture.name} (${mac}) — ${Math.round(since / 1000)} 秒見えていない`);

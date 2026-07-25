@@ -46,6 +46,12 @@ describe("config.example.json", () => {
         assert.equal(DEFAULT_CONFIG.statusRefreshSec, 60, "コードの既定と設定例をずらさない");
     });
 
+    it("⭐ missingGraceSec の既定は 0（器具を勝手に撤去しない）", () => {
+        const cfg = loadConfig(EXAMPLE, () => {});
+        assert.equal(cfg.missingGraceSec, 0);
+        assert.equal(DEFAULT_CONFIG.missingGraceSec, 0, "コードの既定と設定例をずらさない");
+    });
+
     it("器具の名前が 2 台とも入っている", () => {
         const cfg = loadConfig(EXAMPLE, () => {});
         assert.equal(cfg.fixtures["EC:C5:7F:81:DE:CD"]?.name, "ダイニングの照明");
