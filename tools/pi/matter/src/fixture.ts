@@ -280,7 +280,12 @@ export class Fixture {
         const target = matterLevelToTarget(level, this.scale);
 
         if (!touched.has("level") && !touched.has("mireds")) {
-            // ON だけが押された
+            // ON だけが押された。
+            // ⭐ Matter の On は「消灯前の CurrentLevel に戻す」意味なので、
+            //    その位置が常夜灯の帯なら**常夜灯を復元する**。
+            // ⚠️ protocol の ON（`37 37`）は**主灯の記憶値しか戻さない**ので、
+            //    ここで /on を送ると常夜灯だったのに主灯が点いてしまう。
+            if (target.kind === "night") return { kind: "night", level: target.level };
             return { kind: "on" };
         }
 

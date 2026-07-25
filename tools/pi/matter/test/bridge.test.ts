@@ -430,6 +430,53 @@ describe("ブリッジの統合（偽 odelicd・BLE なし）", () => {
         assert.equal(stub.devices[0]!.night, 1, "器具値は 1（最も暗い）");
     });
 
+    it("⭐⭐ 常夜灯の位置で消灯 → 点灯すると常夜灯が戻る（主灯にならない）", async () => {
+        // ⚠️ Matter の On は「消灯前の CurrentLevel に戻す」意味だが、
+        //    protocol の ON（37 37）は主灯の記憶値しか戻さない。
+        //    そのまま /on を送ると常夜灯だったのに主灯が点いてしまう
+        await quiesce(stub);
+        const f = bridge.fixtureOf(MAC_A)!;
+
+        // 常夜灯（帯の中段）にする
+        await f.endpoint.set({ levelControl: { currentLevel: 38 } });
+        await waitFor("常夜灯になる", () => stub.devices[0]!.night === 2, 8000);
+        await quiesce(stub);
+
+        // 消灯 → 点灯
+        await f.endpoint.set({ onOff: { onOff: false } });
+        await waitFor("消灯する", () => stub.devices[0]!.on === false && stub.devices[0]!.night === 0, 8000);
+        await quiesce(stub);
+
+        await f.endpoint.set({ onOff: { onOff: true } });
+        await waitFor("コマンドが飛ぶ", () => stub.commands().length > 0, 8000);
+        await new Promise(r => setTimeout(r, 400));
+
+        const cmds = stub.commands();
+        assert.equal(cmds[0]!.path, "/night", `常夜灯を復元すべき: ${JSON.stringify(cmds)}`);
+        assert.equal(cmds[0]!.params.level, "1", "消灯前と同じ段（level 1 = 器具値 2）に戻すこと");
+        assert.equal(stub.devices[0]!.night, 2);
+    });
+
+    it("主灯の位置で消灯 → 点灯すると /on で器具の記憶値に戻す", async () => {
+        await quiesce(stub);
+        const f = bridge.fixtureOf(MAC_A)!;
+
+        await f.endpoint.set({ levelControl: { currentLevel: targetToMatterLevel({ kind: "main", bright: 70 }) } });
+        await waitFor("主灯 70% になる", () => stub.devices[0]!.bright === 70, 8000);
+        await quiesce(stub);
+
+        await f.endpoint.set({ onOff: { onOff: false } });
+        await waitFor("消灯する", () => stub.devices[0]!.on === false, 8000);
+        await quiesce(stub);
+
+        await f.endpoint.set({ onOff: { onOff: true } });
+        await waitFor("コマンドが飛ぶ", () => stub.commands().length > 0, 8000);
+        await new Promise(r => setTimeout(r, 400));
+
+        // ⭐ 主灯なら /on（器具が記憶している実値に戻る）でよい
+        assert.equal(stub.commands()[0]!.path, "/on");
+    });
+
     it("消灯は /off が飛ぶ", async () => {
         await quiesce(stub);
         await bridge.fixtureOf(MAC_A)!.endpoint.set({ onOff: { onOff: false } });
