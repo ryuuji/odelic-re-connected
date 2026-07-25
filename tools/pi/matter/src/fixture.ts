@@ -81,6 +81,14 @@ export interface FixtureOptions {
     /** Matter 側で値が変わったときに呼ぶ。ブリッジがデバウンスして送信する */
     onDesiredChange: (fixture: Fixture) => void;
     log?: (msg: string) => void;
+    /**
+     * `Reachable` の初期値（既定 true）。
+     *
+     * ⚠️ 名簿から復元した器具は「まだ odelicd から見えていない」ので false で作る。
+     * `server.start()` の**前**にエンドポイントを足す必要があり、その時点では
+     * `endpoint.set()` が使えないので、コンストラクタで渡す。
+     */
+    initialReachable?: boolean;
 }
 
 /**
@@ -135,7 +143,7 @@ export class Fixture {
     private inFlight = new Set<TouchedField>();
     /** 色温度の望み値（%）。`/level` は明るさと色温度を必ず一緒に送るため常に持つ */
     private colorPercent = 50;
-    private reachable = true;
+    private reachable: boolean;
     /**
      * ⭐ Matter 側の「望み」。**`$Changed` で届いた値をそのまま持つ。**
      *
@@ -167,6 +175,7 @@ export class Fixture {
         this.onDesiredChange = opts.onDesiredChange;
         this.logFn = opts.log ?? (() => {});
         this.vaddrKey = "";
+        this.reachable = opts.initialReachable ?? true;
         this.wanted = {
             onOff: false,
             level: MATTER_LEVEL_MAX,
@@ -178,11 +187,11 @@ export class Fixture {
             productName: opts.product.slice(0, 32),
             productLabel: opts.product.slice(0, 64),
             serialNumber: this.mac,
+            reachable: opts.initialReachable ?? true,
             // `uniqueId`（0x12）と `reachable`（0x11）は必須属性。
             // ⭐ `uniqueId` は **matter.js が未指定なら自動生成して永続化する**（"FN" 品質）ので
             //    こちらでは指定しない（指定しても matter.js の生成値が優先される）。
             //    ⚠️ ストレージ（/var/lib/odelic-matter）を消すと再生成される点だけ注意。
-            reachable: true,
         };
 
         if (this.capability.kind === "colorTemperature") {

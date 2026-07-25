@@ -74,6 +74,12 @@ export class Bridge {
     private readonly fixtures = new Map<string, Fixture>();
     /** 器具が最後に `GET /info` に現れた時刻（ms）。撤去の猶予判定に使う */
     private readonly lastPresent = new Map<string, number>();
+    /**
+     * テスト用フック。ノードをオンラインにする直前の器具数を通知する。
+     *
+     * ⚠️ ここが 0 だと Google Home が毎回「デバイスが追加されました」通知を出す。
+     */
+    onOnlineForTest: ((fixtureCount: number) => void) | undefined;
 
     private server!: ServerNode;
     private aggregator!: Endpoint<AggregatorEndpoint>;
@@ -155,6 +161,12 @@ export class Bridge {
         this.aggregator = new Endpoint(AggregatorEndpoint, { id: "aggregator" });
         await this.server.add(this.aggregator);
 
+        // ⭐⭐ **オンラインになる前に**名簿から器具を復元する。
+        //    後から足すと、Google Home が「器具 0 台」を読んだ直後に器具が現れるため
+        //    **毎回の再起動で「デバイスが追加されました」通知が飛ぶ**（実機で確認）。
+        await this.restoreFromRoster();
+
+        this.onOnlineForTest?.(this.fixtures.size);
         await this.server.start();
         this.reportCommissioning();
 
@@ -166,11 +178,7 @@ export class Bridge {
             this.reportCommissioning();
         });
 
-        // ⭐ 名簿から先にエンドポイントを復元する。odelicd から見えていない器具も
-        //    Reachable = false で出しておく（消えると Google Home の設定が失われる）
-        await this.restoreFromRoster();
-
-        // 続いて現況を取り込む。その後は pollMs 間隔。
+        // 現況を取り込む。その後は pollMs 間隔。
         // ⚠️ setInterval で await しないと**ポーリングが重なって**属性の書き戻しが
         //    交錯する（統合テストで実際に踏んだ）。必ず 1 周終えてから次を積む
         await this.poll();
@@ -202,8 +210,9 @@ export class Bridge {
             const override = this.cfg.fixtures[entry.mac] ?? {};
             const cap = capabilityOf(entry.productCode, override);
             if (!cap.isLight) continue;
-            const fixture = await this.createFixture(entry.mac, override.name, cap, entry.product, entry.version);
-            await fixture.setReachable(false);
+            // ⚠️ server.start() 前なので endpoint.set() は使えない。
+            //    Reachable はコンストラクタで false にする
+            const fixture = await this.createFixture(entry.mac, override.name, cap, entry.product, entry.version, false);
             this.log(`◇ 名簿から復元: ${fixture.describe()}（まだ odelicd から見えていません）`);
         }
     }
@@ -215,6 +224,7 @@ export class Bridge {
         cap: ReturnType<typeof capabilityOf>,
         product: string,
         version: string,
+        initialReachable = true,
     ): Promise<Fixture> {
         const fixture = new Fixture({
             mac,
@@ -224,6 +234,7 @@ export class Bridge {
             colorScale: colorScaleOf(this.cfg),
             product,
             version,
+            initialReachable,
             onDesiredChange: f => this.scheduleFlush(f),
             log: msg => this.log(msg),
         });

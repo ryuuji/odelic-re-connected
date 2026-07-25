@@ -649,6 +649,20 @@ describe("通電していない器具が再起動をまたいで残る", () => {
         first = undefined;
     });
 
+    it("⭐⭐ 名簿の器具はノードがオンラインになる前に揃っている（追加通知を出さない）", async () => {
+        // ⚠️ オンライン後にエンドポイントを足すと、Google Home が「器具 0 台」を
+        //    読んだ直後に器具が現れるため**毎回の再起動で「デバイスが追加されました」
+        //    通知が飛ぶ**（実機で確認）。start() の前に揃えることで防ぐ。
+        const probe = makeBridge(5604);
+        const partsAtOnline: number[] = [];
+        // オンラインになった瞬間の器具数を記録する
+        probe.onOnlineForTest = (n: number) => partsAtOnline.push(n);
+        await probe.start();
+        await probe.stop();
+
+        assert.deepEqual(partsAtOnline, [2], `オンライン時点で 2 台揃っていること（実際: ${JSON.stringify(partsAtOnline)}）`);
+    });
+
     it("⭐⭐ 片方の通電が切れた状態で再起動しても、両方のエンドポイントが残る", async () => {
         // 壁スイッチで MAC_A を消した = odelicd から見えなくなる
         stub.devices = [ceilingLight("02000000", MAC_B, 1)];
