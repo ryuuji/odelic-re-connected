@@ -50,6 +50,10 @@ class StubOdelicd {
     failNextWith: number | null = null;
     /** 通電が切れた器具の vAddr キー（odelicd の metrics.delivery[].absent 相当） */
     absent = new Set<string>();
+    /** 未読の miss イベント（odelicd の GET /events?kind=miss 相当） */
+    missEvents: Array<{ ts: number; event: string; vaddr: string }> = [];
+    /** dev: 宛の状態要求を受けた回数（追い打ちの検証用） */
+    statusProbes: string[] = [];
 
     private server: Server | undefined;
     private port = 0;
@@ -66,6 +70,9 @@ class StubOdelicd {
 
             if (req.method === "POST") {
                 this.hits.push({ path: u.pathname, params });
+                if (u.pathname === "/status" && params.target?.startsWith("dev:")) {
+                    this.statusProbes.push(params.target);
+                }
                 this.applyCommand(u.pathname, params);
                 const code = this.failNextWith;
                 this.failNextWith = null;
@@ -78,6 +85,13 @@ class StubOdelicd {
             }
             if (u.pathname === "/info" || u.pathname === "/") {
                 this.json(res, 200, this.info());
+                return;
+            }
+            if (u.pathname === "/events") {
+                const since = Number(u.searchParams.get("since") ?? 0);
+                const kind = u.searchParams.get("kind");
+                const evs = this.missEvents.filter(e => e.ts > since && (kind === null || e.event === kind));
+                this.json(res, 200, { events: evs, now: Date.now() / 1000 });
                 return;
             }
             if (u.pathname === "/metrics") {
@@ -529,6 +543,62 @@ describe("ブリッジの統合（偽 odelicd・BLE なし）", () => {
     });
 });
 
+
+describe("通電切れの検知を早める（追い打ちの状態要求）", () => {
+    const stub = new StubOdelicd();
+    let bridge: Bridge;
+    let storageDir: string;
+
+    before(async () => {
+        storageDir = mkdtempSync(join(tmpdir(), "odelic-matter-fast-"));
+        process.env.MATTER_STORAGE_PATH = storageDir;
+        stub.devices = [ceilingLight("01000000", MAC_A, 0), ceilingLight("02000000", MAC_B, 1)];
+        await stub.listen();
+        const config: Config = {
+            ...DEFAULT_CONFIG,
+            odelicd: stub.baseUrl,
+            pollMs: 50,
+            waitMs: 0,
+            statusRefreshSec: 0,
+            matter: { ...DEFAULT_CONFIG.matter, port: 5603, storagePath: storageDir, discriminator: 3843 },
+            fixtures: { [MAC_A]: { name: "ダイニングの照明" }, [MAC_B]: { name: "リビングの照明" } },
+        };
+        bridge = new Bridge({ config, log: msg => { if (process.env.BRIDGE_TEST_LOG) console.log(`    | ${msg}`); } });
+        await bridge.start();
+        await waitFor("2 台そろう", () => bridge.fixtureOf(MAC_A) !== undefined && bridge.fixtureOf(MAC_B) !== undefined);
+    });
+
+    after(async () => {
+        await bridge?.stop();
+        await stub.close();
+        rmSync(storageDir, { recursive: true, force: true });
+    });
+
+    it("⭐⭐ 取りこぼしを 1 回見つけたら、その器具に追い打ちの状態要求を打つ", async () => {
+        await quiesce(stub);
+        stub.statusProbes.length = 0;
+
+        // odelicd が「ダイニングが応答しなかった」と記録した体にする
+        stub.missEvents.push({ ts: Date.now() / 1000, event: "miss", vaddr: "01000000" });
+
+        await waitFor("追い打ちが打たれる", () => stub.statusProbes.length >= 2, 8000);
+        // ⭐ 疑わしい器具だけに打つ（もう片方には打たない）
+        assert.ok(
+            stub.statusProbes.every(t => t === "dev:01000000"),
+            `疑わしい器具以外にも打っている: ${JSON.stringify(stub.statusProbes)}`,
+        );
+    });
+
+    it("⚠️ 既に absent と分かっている器具には追い打ちしない（無駄な BLE を使わない）", async () => {
+        stub.absent.add("02000000");
+        await waitFor("absent が取り込まれる", () => bridge.fixtureOf(MAC_B)!.endpoint.state.bridgedDeviceBasicInformation.reachable === false, 8000);
+
+        stub.statusProbes.length = 0;
+        stub.missEvents.push({ ts: Date.now() / 1000, event: "miss", vaddr: "02000000" });
+        await new Promise(r => setTimeout(r, 1500));
+        assert.deepEqual(stub.statusProbes, [], "absent 済みの器具に追い打ちしてはいけない");
+    });
+});
 
 /**
  * ⭐⭐ 一番守りたいシナリオ。

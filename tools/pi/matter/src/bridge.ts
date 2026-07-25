@@ -46,6 +46,22 @@ const BRIDGE_SOFTWARE_VERSION = 1;
 /** `/metrics` を引く間隔（ポーリング何回ごと）。absent はゆっくり変わる */
 const ABSENT_CHECK_EVERY = 10;
 
+/**
+ * 取りこぼしを見つけたときに追加で打つ状態要求の回数と間隔。
+ *
+ * ⭐ odelicd は **3 回連続**の取りこぼしで `absent` を立てる。定期要求
+ * （`statusRefreshSec`）だけに任せると 3 周期＝数分かかるので、1 回目の取りこぼしを
+ * 見つけた時点でこちらから追い打ちをかけて streak を完成させる。
+ *
+ * ⚠️ 間隔は odelicd の `probe_window_ms`（RTT p90 × 4・下限 500 ms）より長くする。
+ * 短いと前の要求の窓が閉じておらず、取りこぼしとして記録されない。
+ */
+const FAST_PROBES = 2;
+const FAST_PROBE_GAP_MS = 900;
+
+/** 同じ器具に追い打ちをかける最短間隔（ms）。ログと BLE を無駄に増やさないため */
+const FAST_PROBE_COOLDOWN_MS = 20_000;
+
 export interface BridgeOptions {
     config: Config;
     log?: (msg: string) => void;
@@ -81,6 +97,10 @@ export class Bridge {
     private absent = new Set<string>();
     /** `/metrics` は毎回引く必要がない（absent は 3 回の取りこぼしで決まる） */
     private pollTick = 0;
+    /** `GET /events` の続きを読む位置（unix 秒） */
+    private lastEventTs = 0;
+    /** 器具ごとの追い打ち最終時刻。連打を防ぐ */
+    private readonly lastFastProbe = new Map<string, number>();
     /**
      * ⭐ 一度見つけた器具の名簿（永続化）。
      *
@@ -276,21 +296,74 @@ export class Bridge {
         }
         this.lastInfo = info;
 
-        // ⭐ 通電が切れた器具を拾う。absent は 3 回の取りこぼしで決まるので毎回は要らない
-        if (this.pollTick++ % ABSENT_CHECK_EVERY === 0) {
-            const absent = await this.client.absentKeys();
-            if (absent !== null) {
-                for (const key of absent) {
-                    if (!this.absent.has(key)) this.log(`[!] 器具 ${key} が応答しません（通電が切れた可能性）`);
-                }
-                for (const key of this.absent) {
-                    if (!absent.has(key)) this.log(`器具 ${key} が復帰しました`);
-                }
-                this.absent = absent;
-            }
+        // ⭐ 取りこぼしを 1 回目で捕まえて追い打ちをかける（検知を数分から数秒に縮める）
+        const sawMiss = await this.checkMisses();
+
+        // ⭐ 通電が切れた器具を拾う。absent は 3 回の取りこぼしで決まるので毎回は要らないが、
+        //    取りこぼしを見つけた直後は即座に確認する
+        if (sawMiss || this.pollTick++ % ABSENT_CHECK_EVERY === 0) {
+            await this.refreshAbsent();
         }
         await this.reconcile(info);
         await this.probeIdentityIfNeeded(info);
+    }
+
+    /** `/metrics` の `absent` を取り込み、変化をログに出す。⭐ BLE を使わない。 */
+    private async refreshAbsent(): Promise<void> {
+        const absent = await this.client.absentKeys();
+        if (absent === null) return;
+        for (const key of absent) {
+            if (!this.absent.has(key)) this.log(`[!] 器具 ${key} が応答しません（通電が切れた可能性）`);
+        }
+        for (const key of this.absent) {
+            if (!absent.has(key)) this.log(`器具 ${key} が復帰しました`);
+        }
+        this.absent = absent;
+    }
+
+    /**
+     * `miss` イベントを見て、疑わしい器具に追加の状態要求を打つ。
+     *
+     * ⭐ odelicd は 3 回連続の取りこぼしで `absent` を立てる。定期要求だけに任せると
+     * `statusRefreshSec × 3`（既定なら約 1 分半〜3 分）かかるので、
+     * **1 回目の取りこぼしを見つけた時点で追い打ちをかけて数秒で確定させる。**
+     *
+     * ⚠️ `GET /events` 自体は BLE を使わない。追い打ちの状態要求だけが 1 通ずつ使う。
+     * 既に `absent` と分かっている器具には打たない（無駄）。
+     *
+     * @returns 追い打ちを打ったか（打ったなら呼び出し側が `absent` を即確認する）
+     */
+    private async checkMisses(): Promise<boolean> {
+        const res = await this.client.events(this.lastEventTs, "miss");
+        if (res === null) return false;
+        const first = this.lastEventTs === 0;
+        this.lastEventTs = res.now;
+        // 初回は過去の履歴を全部拾ってしまうので、位置合わせだけして何もしない
+        if (first) return false;
+
+        const now = Date.now();
+        const suspects = new Set<string>();
+        for (const e of res.events) {
+            const key = e.vaddr?.toUpperCase();
+            if (key === undefined || this.absent.has(key)) continue;
+            if (now - (this.lastFastProbe.get(key) ?? 0) < FAST_PROBE_COOLDOWN_MS) continue;
+            suspects.add(key);
+        }
+        if (suspects.size === 0) return false;
+
+        for (const key of suspects) {
+            this.lastFastProbe.set(key, now);
+            this.log(`器具 ${key} が状態要求に応答しませんでした。確認のため追加で問い合わせます`);
+        }
+        // ⚠️ 直列に打つ。odelicd は in-flight を 1 本に制限しているので、
+        //    間隔を空けないと前の要求の窓が閉じず取りこぼしとして記録されない
+        for (let i = 0; i < FAST_PROBES; i++) {
+            for (const key of suspects) {
+                await this.client.requestStatus(`dev:${key}`);
+            }
+            await new Promise(r => setTimeout(r, FAST_PROBE_GAP_MS));
+        }
+        return true;
     }
 
     /**

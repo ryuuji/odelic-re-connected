@@ -69,9 +69,9 @@ export interface Config {
 export const DEFAULT_CONFIG: Config = {
     odelicd: "http://127.0.0.1:8080",
     pollMs: 1000,
-    // 壁スイッチでの変更を拾う。⚠️ BLE を 1 分に 1 通使う
+    // 壁スイッチでの変更を拾い、通電切れも検知する。⚠️ BLE を 30 秒に 1 通使う
     // （HCI ログを採取するときだけ 0 にする）
-    statusRefreshSec: 60,
+    statusRefreshSec: 30,
     // ⚠️ 0 = 撤去しない。器具の永続化のため（上のコメント参照）
     missingGraceSec: 0,
     waitMs: 1500,

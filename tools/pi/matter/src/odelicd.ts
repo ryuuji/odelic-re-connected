@@ -63,6 +63,19 @@ export interface OdelicMetrics {
     delivery: Record<string, { ewma: number; n: number; absent: boolean }>;
 }
 
+/**
+ * `GET /events` の 1 件。`event` 名ごとに追加フィールドが付く。
+ *
+ * ⭐ `event: "miss"` は「状態要求に応答がなかった」記録で、`vaddr` が付く。
+ * これを見れば**通電切れの兆候を 1 回目の取りこぼしで掴める**
+ * （`absent` は 3 回連続で初めて立つので、それを待つと数分かかる）。
+ */
+export interface OdelicEvent {
+    ts: number;
+    event: string;
+    vaddr?: string;
+}
+
 /** 操作の対象。odelicd の `?target=` に渡す文字列と 1:1。 */
 export type OdelicTarget = "all" | `group:${number}` | `dev:${string}`;
 
@@ -137,6 +150,23 @@ export class OdelicClient {
             const res = await fetch(this.url("/info"), { signal: AbortSignal.timeout(timeoutMs) });
             if (!res.ok) return null;
             return (await res.json()) as OdelicInfo;
+        } catch {
+            return null;
+        }
+    }
+
+    /**
+     * 指定時刻より後のイベントを取る。⭐ **BLE を使わない。**
+     *
+     * `kind` を渡すとその種類だけに絞れる（`miss` / `rtt` / `link_up` など）。
+     */
+    async events(sinceTs: number, kind?: string): Promise<{ events: OdelicEvent[]; now: number } | null> {
+        try {
+            const res = await fetch(this.url("/events", { since: sinceTs, kind }), {
+                signal: AbortSignal.timeout(4000),
+            });
+            if (!res.ok) return null;
+            return (await res.json()) as { events: OdelicEvent[]; now: number };
         } catch {
             return null;
         }

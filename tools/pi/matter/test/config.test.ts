@@ -42,8 +42,8 @@ describe("config.example.json", () => {
 
     it("statusRefreshSec が壁スイッチ追従の既定になっている", () => {
         const cfg = loadConfig(EXAMPLE, () => {});
-        assert.equal(cfg.statusRefreshSec, 60);
-        assert.equal(DEFAULT_CONFIG.statusRefreshSec, 60, "コードの既定と設定例をずらさない");
+        assert.equal(cfg.statusRefreshSec, 30);
+        assert.equal(DEFAULT_CONFIG.statusRefreshSec, 30, "コードの既定と設定例をずらさない");
     });
 
     it("⭐ missingGraceSec の既定は 0（器具を勝手に撤去しない）", () => {
