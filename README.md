@@ -36,6 +36,7 @@ ODELIC「CONNECTED LIGHTING for HOME」対応照明器具を、BLE 経由で制�
 | [tools/pi/matter/](tools/pi/matter/) | ⭐ **Matter ブリッジ**（Node.js + matter.js）。照明を Matter デバイスとして公開する。BLE は使わない |
 | [tools/pi/odelicd.service](tools/pi/odelicd.service) | systemd ユニット |
 | [tools/pi/install.sh](tools/pi/install.sh) | インストーラ（`sudo ./install.sh 12345678 8080`） |
+| [tools/pi/backup.sh](tools/pi/backup.sh) | ⭐ **状態のバックアップ**（Matter の fabric 鍵・器具の名簿・設定）。`--install` で毎日取得 |
 | [tools/pi/mesh_peripheral.py](tools/pi/mesh_peripheral.py) | 検証用の単発実行版（`--send blink` など） |
 | [tools/pi/run-p2.sh](tools/pi/run-p2.sh) | 上記を `btmon` 記録付きで実行するラッパー |
 | [tools/pi/adv_raw.sh](tools/pi/adv_raw.sh) | raw HCI で `ADV_PHONE` を送る（BlueZ D-Bus の代替） |

@@ -707,6 +707,81 @@ Invoke « 3.onOff.on
 
 ---
 
+## M10c. ⭐ Pi の再起動と状態のバックアップ（2026-07-26）
+
+### 再起動（電源断からの復帰）を実機で検証
+
+`sudo systemctl reboot` を実行し、復帰を確認した。
+
+| 検証項目 | 結果 |
+| --- | --- |
+| サービスの自動起動 | ✅ `odelicd` / `odelic-matter` 両方 active |
+| Matter のフェアリング | ✅ 保持（`既に commissioning 済み`） |
+| 名簿からの復元 | ✅ 2 台とも復元 |
+| ⭐ Google Home の再接続 | ✅ **起動 0.4 秒後に自分から `Resumed session`**。追加通知なし |
+| BLE リンク | ✅ 切断 0・到達率 1.000 |
+| 器具の状態 | ✅ 再起動前と一致 |
+
+```
+07:51:31.173  Publishing kind: operational ...
+07:51:31.551  CaseServer  Pairing request « udp://[fe80::f272:...]:5540
+07:51:31.831  CaseServer  Resumed session ... fabric: 5bc926abb9043da3 (#1)
+```
+
+⭐ **セッション再開（Resumed session）が使われる**ので、再 commissioning も
+`PartsList` の再読み込みも起きない。M6-6 の「起動前にエンドポイントを揃える」が効いている。
+
+### 状態のバックアップ
+
+[`tools/pi/backup.sh`](../tools/pi/backup.sh)。systemd タイマーで毎日 03:30。
+
+| 対象 | 失うと何が起きるか |
+| --- | --- |
+| `/var/lib/odelic-matter` | ⭐ Matter の fabric 鍵・`uniqueId`・器具の名簿 → **再 commissioning + Google Home の設定やり直し** |
+| `/var/lib/odelicd` | 広告アドレス・コントローラ識別子（器具が覚えている） |
+| `/etc/default/odelicd` | ⚠️ 8 桁 ID（**メッシュのパスワードを含む**） |
+| `/etc/odelic-matter` | 器具名・ケルビン設定 |
+
+1 回 8 KB、7 世代を保持。⚠️ `/` が 90% 使用なので世代管理は必須。
+
+⚠️⚠️ **出力には秘密情報（メッシュのパスワード・Matter の fabric 秘密鍵）が入る。**
+`0600 root:root`・ディレクトリ `0700` で作る。**そのまま他人に渡さないこと。**
+
+⚠️ **SD カードの故障には単体では効かない**（同じカードに置くため）。
+カード故障に備えるなら開発機へ引き上げる。
+
+```bash
+ssh odelic-re-connected 'sudo cat /var/backups/odelic/latest.tar.gz' > odelic-backup.tar.gz
+```
+
+守れるのは「うっかり消した」「アップグレードで壊した」「状態が壊れた」。
+
+#### 復元
+
+```bash
+sudo systemctl stop odelic-matter odelicd
+sudo tar xzf /var/backups/odelic/latest.tar.gz -C /
+sudo systemctl start odelicd odelic-matter
+```
+
+⚠️ 別の Pi へ移すと fabric 鍵ごと移るので Google Home からは「同じデバイス」に見える
+（再 commissioning 不要）。ただし **2 台同時に起動してはいけない**。
+
+#### ⚠️ 踏んだ罠
+
+**`sudo` の前にシェルがグロブを展開する。**`sudo rm -rf /var/backups/odelic/*` や
+`sudo stat .../odelic-*.tar.gz` は、**呼び出し側のシェル（非 root）が 0700 の
+ディレクトリを読めないため展開に失敗**し、何もせず成功したように見える。
+
+```bash
+sudo sh -c 'rm -f /var/backups/odelic/odelic-*.tar.gz'   # ⭐ root 側で展開させる
+```
+
+⚠️ さらに `sh`（dash）は **brace 展開に非対応**。`{a,b}` は使えない。
+この 2 つで「消したつもりが消えていない」を 2 回踏んだ。
+
+---
+
 ## M11. 検証
 
 ### A. BLE を使わない検証
