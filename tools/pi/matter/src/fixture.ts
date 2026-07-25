@@ -37,6 +37,7 @@ import {
     miredsToColorPercent,
     physicalMaxMireds,
     physicalMinMireds,
+    sameTarget,
     targetToMatterLevel,
 } from "./mapping.js";
 
@@ -232,6 +233,17 @@ export class Fixture {
     subscribe(): void {
         const ep = this.endpoint;
 
+        // ⭐ 永続化された属性を「意図」の初期値にする。これをしないと、再起動後に
+        //    最初の書き戻しで段の代表値へ書き換えてしまい、スライダーが一度動く
+        this.wanted.onOff = ep.state.onOff.onOff === true;
+        if (typeof ep.state.levelControl.currentLevel === "number") {
+            this.wanted.level = ep.state.levelControl.currentLevel as number;
+        }
+        if (this.capability.kind === "colorTemperature" && typeof ep.state.colorControl.colorTemperatureMireds === "number") {
+            this.wanted.mireds = ep.state.colorControl.colorTemperatureMireds as number;
+        }
+        this.applied = { onOff: this.wanted.onOff, level: this.wanted.level, mireds: this.wanted.mireds };
+
         ep.events.onOff.onOff$Changed.on((value: boolean) => this.noteChange("onOff", value));
         ep.events.levelControl.currentLevel$Changed.on((value: number | null) => this.noteChange("level", value));
         if (this.capability.kind === "colorTemperature") {
@@ -371,19 +383,44 @@ export class Fixture {
             }
         }
         if (!this.isPinned("level")) {
-            this.applied.level = want.level;
-            if (want.level !== null) {
-                this.wanted.level = want.level;
-                if (want.level !== this.endpoint.state.levelControl.currentLevel) {
+            if (want.level === null) {
+                this.applied.level = null;
+            } else {
+                // ⭐ 量子化で同じ段なら Matter 側の値を**書き換えない**。
+                //    器具は主灯 20 段しか持たないので level 92 と 96 はどちらも「主灯 15%」。
+                //    代表値に書き換えると**スライダーが設定直後に動く**（実機で発覚）
+                //
+                // ⚠️ 比較対象は `endpoint.state` ではなく `wanted`。`endpoint.state` は
+                //    読む時点に依存するので、飛行中の書き込みと競合して判定がぶれる
+                //    （テストが交互に落ちて気づいた）。`wanted` は noteChange が
+                //    同期的に更新するのでタイミングに依存しない
+                const same = sameTarget(
+                    matterLevelToTarget(this.wanted.level, this.scale),
+                    matterLevelToTarget(want.level, this.scale),
+                );
+                if (same) {
+                    this.applied.level = this.wanted.level;
+                } else {
+                    this.wanted.level = want.level;
+                    this.applied.level = want.level;
                     patch.levelControl = { currentLevel: want.level };
                 }
             }
         }
         if (this.capability.kind === "colorTemperature" && !this.isPinned("mireds")) {
-            this.applied.mireds = want.mireds;
-            if (want.mireds !== null) {
-                this.wanted.mireds = want.mireds;
-                if (want.mireds !== this.endpoint.state.colorControl.colorTemperatureMireds) {
+            if (want.mireds === null) {
+                this.applied.mireds = null;
+            } else {
+                // ⭐ 色温度も同じ。器具は 21 段なので 227 mired と 230 mired は同じ「65%」
+                const same =
+                    this.wanted.mireds !== null &&
+                    miredsToColorPercent(this.wanted.mireds, this.colorScale) ===
+                        miredsToColorPercent(want.mireds, this.colorScale);
+                if (same) {
+                    this.applied.mireds = this.wanted.mireds;
+                } else {
+                    this.wanted.mireds = want.mireds;
+                    this.applied.mireds = want.mireds;
                     patch.colorControl = { colorTemperatureMireds: want.mireds };
                 }
             }

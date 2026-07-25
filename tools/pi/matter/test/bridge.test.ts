@@ -20,7 +20,7 @@ import { after, before, describe, it } from "node:test";
 
 import { Bridge } from "../src/bridge.js";
 import { DEFAULT_CONFIG, type Config } from "../src/config.js";
-import { colorPercentToMireds, targetToMatterLevel } from "../src/mapping.js";
+import { colorPercentToMireds, matterLevelToTarget, miredsToColorPercent, targetToMatterLevel } from "../src/mapping.js";
 import { loadRoster, rosterPath } from "../src/roster.js";
 
 // ------------------------------------------------------------------ 偽 odelicd
@@ -212,6 +212,29 @@ async function quiesce(stub: StubOdelicd, quietMs = 300): Promise<void> {
         await new Promise(r => setTimeout(r, quietMs));
     }
     stub.clear();
+}
+
+/**
+ * 器具の属性が動かなくなるまで待つ。
+ *
+ * ⚠️ `quiesce()` は POST しか見ていないので、書き戻し（`endpoint.set`）の飛行中に
+ * 測定を始めてしまう。「設定した値が書き換えられない」ことを測るテストでは、
+ * 開始前にここで静止させる。
+ */
+async function settleAttrs(f: { endpoint: unknown }, quietMs = 400): Promise<void> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const st = (): any => (f.endpoint as any).state;
+    let prev = "";
+    for (;;) {
+        const now = JSON.stringify([
+            st().levelControl?.currentLevel,
+            st().onOff?.onOff,
+            st().colorControl?.colorTemperatureMireds,
+        ]);
+        if (now === prev) return;
+        prev = now;
+        await new Promise(r => setTimeout(r, quietMs));
+    }
 }
 
 const MAC_A = "EC:C5:7F:81:DE:CD";
@@ -414,6 +437,69 @@ describe("ブリッジの統合（偽 odelicd・BLE なし）", () => {
         const cmds = stub.commands();
         assert.equal(cmds[0]!.path, "/level");
         assert.equal(cmds[0]!.params.color, "35", `最後の指示 35% が送られていない: ${JSON.stringify(cmds)}`);
+    });
+
+    it("⭐⭐ 設定した明るさが直後に書き換えられない（スライダーが動かない）", async () => {
+        // ⚠️ 器具は主灯 20 段しか持たないので level 92 と 96 はどちらも「主灯 15%」。
+        //    段の代表値に書き換えると**設定直後にスライダーが動く**（実機で発覚:
+        //    Google Home が 92 を指示したのに 96 を書き戻していた）
+        await quiesce(stub);
+        const f = bridge.fixtureOf(MAC_A)!;
+        await settleAttrs(f);
+
+        const canonical = targetToMatterLevel({ kind: "main", bright: 15 });
+        const offBy = canonical - 4; // 同じ段だが代表値とは違う値
+        assert.notEqual(offBy, canonical);
+        assert.deepEqual(matterLevelToTarget(offBy), { kind: "main", bright: 15 }, "同じ段であること");
+
+        await f.endpoint.set({ levelControl: { currentLevel: offBy } });
+        await waitFor("器具が 15% になる", () => stub.devices[0]!.bright === 15, 8000);
+        await new Promise(r => setTimeout(r, 600));
+
+        // ⭐ ユーザーが指定した値がそのまま残っていること
+        assert.equal(
+            f.endpoint.state.levelControl.currentLevel,
+            offBy,
+            "同じ段なのに書き換えている（スライダーが動く）",
+        );
+    });
+
+    it("⭐⭐ 設定した色温度が直後に書き換えられない", async () => {
+        await quiesce(stub);
+        const f = bridge.fixtureOf(MAC_A)!;
+        await settleAttrs(f);
+
+        const canonical = colorPercentToMireds(65);
+        const offBy = canonical - 3; // 同じ 65% の段だが代表値とは違う
+        assert.equal(miredsToColorPercent(offBy), 65, "同じ段であること");
+        assert.notEqual(offBy, canonical);
+
+        await f.endpoint.set({ colorControl: { colorTemperatureMireds: offBy } });
+        await waitFor("器具が 65% になる", () => stub.devices[0]!.color === 65, 8000);
+        await new Promise(r => setTimeout(r, 600));
+
+        const got = f.endpoint.state.colorControl.colorTemperatureMireds as number;
+        assert.equal(
+            got,
+            offBy,
+            `同じ段なのに書き換えている: 指定 ${offBy} (${miredsToColorPercent(offBy)}%) → 実際 ${got} ` +
+                `(${miredsToColorPercent(got)}%) / canonical=${canonical} / 器具 color=${stub.devices[0]!.color}`,
+        );
+    });
+
+    it("段が実際に違えば書き換える（他コントローラの操作を反映する）", async () => {
+        await quiesce(stub);
+        const f = bridge.fixtureOf(MAC_A)!;
+        // 純正アプリなどで 40% に変えられた体にする
+        stub.devices[0]!.on = true;
+        stub.devices[0]!.night = 0;
+        stub.devices[0]!.bright = 40;
+        await waitFor(
+            "40% が反映される",
+            () => matterLevelToTarget(f.endpoint.state.levelControl.currentLevel as number).kind === "main" &&
+                  (matterLevelToTarget(f.endpoint.state.levelControl.currentLevel as number) as { bright: number }).bright === 40,
+            8000,
+        );
     });
 
     it("⭐ 常夜灯: 明るさ軸の下端に落とすと /night が飛ぶ", async () => {

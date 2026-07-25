@@ -105,6 +105,21 @@ export class Bridge {
     private pollTick = 0;
     /** `GET /events` の続きを読む位置（unix 秒） */
     private lastEventTs = 0;
+    /**
+     * 最後にコマンドの結果を反映し終えた時刻（ms）。
+     *
+     * ⚠️ **これより前に取得した `/info` は古い**（コマンドが器具に効く前の状態）。
+     * 適用すると**操作直後に一瞬値が戻る**（テストが 6 回に 2 回落ちて気づいた）。
+     */
+    private lastSettleAt = 0;
+    /**
+     * コマンドを送った回数。⭐ **飛行中の `/info` を無効化するために使う。**
+     *
+     * ⚠️ 取得を始めた時点では最新でも、その後にコマンドを送れば**古い情報になる**。
+     * それを適用すると `wanted` が巻き戻り、次の書き戻しで
+     * 「ユーザーが設定した値」が段の代表値に書き換えられてしまう（診断ログで確定）。
+     */
+    private cmdEpoch = 0;
     /** 器具ごとの追い打ち最終時刻。連打を防ぐ */
     private readonly lastFastProbe = new Map<string, number>();
     /**
@@ -288,6 +303,10 @@ export class Bridge {
     /** `GET /info` を読んでエンドポイントと属性を合わせる。⭐ BLE を使わない。 */
     private async poll(): Promise<void> {
         if (this.stopping) return;
+        // ⚠️ 取得を始めた時点の情報を覚えておく。
+        //    コマンドの反映より前／取得中にコマンドを送った場合は捨てる
+        const fetchedAt = Date.now();
+        const epoch = this.cmdEpoch;
         const info = await this.client.info();
         if (info === null) {
             // odelicd に届かない。何も断定しない（P4）
@@ -305,6 +324,9 @@ export class Bridge {
             this.odelicdDown = false;
             this.log("odelicd に再接続しました");
         }
+        // ⚠️ コマンドの反映より前に取得した情報、または取得中にコマンドを送った場合は古い。
+        //    適用すると値が一瞬戻り、ユーザーが設定した値が代表値に書き換えられる
+        if (fetchedAt < this.lastSettleAt || epoch !== this.cmdEpoch) return;
         this.lastInfo = info;
 
         // ⭐ 取りこぼしを 1 回目で捕まえて追い打ちをかける（検知を数分から数秒に縮める）
@@ -520,6 +542,8 @@ export class Bridge {
     }
 
     private send(target: OdelicTarget, cmd: PendingCommand): Promise<CommandOutcome> {
+        // ⭐ 飛行中の `/info` をここで無効化する
+        this.cmdEpoch++;
         switch (cmd.kind) {
             case "off":
                 return this.client.setOn(target, false);
@@ -545,6 +569,7 @@ export class Bridge {
 
         if (outcome.ok) {
             if (info !== null) await this.applyInfoTo(info, fixtures);
+            this.lastSettleAt = Date.now();
             return;
         }
 
@@ -560,6 +585,7 @@ export class Bridge {
 
         if (info !== null) await this.applyInfoTo(info, fixtures, true);
         else for (const f of fixtures) await f.setReachable(false);
+        this.lastSettleAt = Date.now();
     }
 
     private async applyInfoTo(info: OdelicInfo, fixtures: Fixture[], revert = false): Promise<void> {

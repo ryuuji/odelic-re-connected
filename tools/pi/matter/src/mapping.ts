@@ -58,6 +58,20 @@ export interface NightTarget {
 /** 明るさ軸上の 1 点。消灯は OnOff クラスタの仕事なのでここには含めない。 */
 export type LightTarget = MainTarget | NightTarget;
 
+/**
+ * 2 つの指示が同じ段を指しているか。
+ *
+ * ⭐ 器具は主灯 20 段 + 常夜灯 3 段しか持たないので、Matter level の 92 と 96 は
+ * どちらも「主灯 15%」を意味する。**同じ段なら Matter 側の値を書き換えない**ために使う
+ * （書き換えるとスライダーが設定直後に動く）。
+ */
+export function sameTarget(a: LightTarget, b: LightTarget): boolean {
+    if (a.kind !== b.kind) return false;
+    if (a.kind === "main" && b.kind === "main") return a.bright === b.bright;
+    if (a.kind === "night" && b.kind === "night") return a.level === b.level;
+    return false;
+}
+
 function clamp(v: number, lo: number, hi: number): number {
     return Math.min(Math.max(v, lo), hi);
 }
