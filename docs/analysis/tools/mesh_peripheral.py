@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """ODELIC / Pairlink メッシュに Peripheral として参加する（フェーズ P2 / P3）。
 
-Raspberry Pi 上で実行する。純正アプリの `join_mode = 1`（Peripheral）と
+Raspberry Pi 上で実行する。公式アプリの `join_mode = 1`（Peripheral）と
 同じ構成を再現する。
 
     [Pi]  GATT サーバ（FFD0 / FFD1 / FFD2 + CCCD）を公開
@@ -248,7 +248,7 @@ class RawAdvertiser:
         self.random_addr = random_addr
 
         if random_addr:
-            # 純正アプリは LE Set Random Address を使っている（C18-7）。
+            # 公式アプリは LE Set Random Address を使っている（C18-7）。
             # ランダム静的アドレス（上位 2 bit が 11）を毎回作る。
             # 器具が「一度扱ったコントローラ」を記憶している場合、
             # 新しいアドレスなら新規として扱われる可能性がある。
@@ -299,7 +299,7 @@ class RawAdvertiser:
             return False
 
         # LE Set Advertising Parameters
-        #   interval 0x00A0 = 100ms（純正の ADVERTISE_MODE_LOW_LATENCY 相当）
+        #   interval 0x00A0 = 100ms（公式アプリの ADVERTISE_MODE_LOW_LATENCY 相当）
         #   adv_type 0x00 = ADV_IND（接続可能・無指向）← 器具から接続してもらう
         #   own_addr_type 0x01 = random / 0x00 = public
         own_type = 0x01 if self.random_addr else 0x00
@@ -406,7 +406,7 @@ class Characteristic(dbus.service.Object):
 
 
 class MeshSession:
-    """メッシュ参加の状態機械。純正アプリの process_mesh_cmd 相当（C5 / C18-3）。"""
+    """メッシュ参加の状態機械。公式アプリの process_mesh_cmd 相当（C5 / C18-3）。"""
 
     def __init__(
         self,
@@ -482,10 +482,10 @@ class MeshSession:
                 log(f"     ★ device_num = {self.device_num}（メッシュ内の器具台数）")
             self.joined = True
             self.join_count += 1
-            # 純正アプリは参加完了の直後に SET_LINK を送っている（実機ログ +129526.7ms）。
+            # 公式アプリは参加完了の直後に SET_LINK を送っている（実機ログ +129526.7ms）。
             # これが接続維持に効いている可能性があるので同じことをする。
             if self.send_set_link:
-                log("     → SET_LINK (01 10) を送信（純正アプリと同じ挙動）")
+                log("     → SET_LINK (01 10) を送信（公式アプリと同じ挙動）")
                 self.send(bytes([PDU_CMD, CMD_SET_LINK]))
 
         elif sub == CMD_WELCOME:
@@ -689,7 +689,7 @@ def main() -> int:
         "--public-addr",
         action="store_true",
         help="公開アドレスで広告する。既定はランダム静的アドレス"
-        "（純正アプリの挙動に合わせる）",
+        "（公式アプリの挙動に合わせる）",
     )
     ap.add_argument(
         "--repeat",
@@ -700,7 +700,7 @@ def main() -> int:
         "--no-set-link",
         action="store_true",
         help="参加後の SET_LINK (01 10) を送らない。"
-        "既定は送る（純正アプリと同じ。接続維持に効く可能性）",
+        "既定は送る（公式アプリと同じ。接続維持に効く可能性）",
     )
     args = ap.parse_args()
 
@@ -810,7 +810,7 @@ def main() -> int:
             f"中央 {sorted(durs)[len(durs) // 2]:.2f} 秒 / "
             f"最長 {max(durs):.2f} 秒（{len(durs)} 回）"
         )
-        log("  → 純正アプリは 60 秒以上維持していた。短ければ維持できていない")
+        log("  → 公式アプリは 60 秒以上維持していた。短ければ維持できていない")
     elif session.notify_chrc and session.notify_chrc.notifying:
         held = time.monotonic() - (session.notify_chrc.notify_started_at or 0)
         log(f"★ 終了時点でまだ接続が生きている（{held:.1f} 秒継続中）")

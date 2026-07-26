@@ -152,7 +152,7 @@ export function num(v, digits = 0) {
  * 連続した呼び出しをまとめる。
  *
  * ⚠️⚠️ **明るさスライダーの中間値を連射しないために要る。**
- * 純正アプリは約 143 ms 間隔で 16 通も送っていた（docs C28）。
+ * 公式アプリは約 143 ms 間隔で 16 通も送っていた（docs C28）。
  */
 export function debounce(fn, ms) {
     let timer;

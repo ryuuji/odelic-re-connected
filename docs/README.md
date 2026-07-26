@@ -35,8 +35,8 @@
 | ファイル | 内容 |
 | --- | --- |
 | ⭐ [analysis/history.md](analysis/history.md) | **何を信じ、どこで間違え、どう覆したか。**5 回の誤りの記録 |
-| [analysis/01-findings.md](analysis/01-findings.md) | 製品・純正アプリの調査結果（出典付き） |
-| [analysis/03-instability.md](analysis/03-instability.md) | 純正アプリが不安定な原因（I1〜I11） |
+| [analysis/01-findings.md](analysis/01-findings.md) | 製品・公式アプリの調査結果（出典付き） |
+| [analysis/03-instability.md](analysis/03-instability.md) | 公式アプリが不安定な原因（I1〜I11） |
 | [analysis/04-analysis-procedure.md](analysis/04-analysis-procedure.md) | **解析手順書**（環境構築・静的解析・動的解析）。再現するならここ |
 | ⛔ [analysis/05-app-design.md](analysis/05-app-design.md) | 作らなかった Android アプリの設計。⭐ 末尾の「Pi での実証から来る必須事項」は移植する人に有用 |
 | [analysis/09-handoff-web-ui.md](analysis/09-handoff-web-ui.md) | 設定ページで踏んだ罠の記録 |

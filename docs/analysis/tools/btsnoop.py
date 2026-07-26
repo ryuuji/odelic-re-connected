@@ -366,7 +366,7 @@ AD_TYPE_MANUFACTURER = 0xFF
 
 # ------------------------------------------------- Pairlink / ODELIC 固有
 
-# 純正アプリは Company ID を 0 で送る（MeshCommon.createAdvertiseData の
+# 公式アプリは Company ID を 0 で送る（MeshCommon.createAdvertiseData の
 # addManufacturerData(0, ...)）。SIG 未割当の値なので他社と衝突しうる。
 PAIRLINK_COMPANY_ID = 0x0000
 

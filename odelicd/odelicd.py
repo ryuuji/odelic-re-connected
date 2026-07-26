@@ -2,7 +2,7 @@
 """odelicd — ODELIC CONNECTED LIGHTING を制御する常駐デーモン。
 
 Raspberry Pi 上で常駐し、器具との GATT 接続を維持したまま HTTP API で操作を受ける。
-純正アプリの起動 7 秒に対して、**接続済みなので操作から反応まで実質ゼロ遅延**。
+公式アプリの起動 7 秒に対して、**接続済みなので操作から反応まで実質ゼロ遅延**。
 
 プロトコルの根拠は docs/02-protocol.md の C6 / C15 / C16 / C17 / C19。
 
@@ -76,7 +76,7 @@ PDU_DATA_EVENT = 0x03
 PDU_ENCRYPTED = 0x06  # 器具からのデータ応答（C23 で復号できるようになった）
 PDU_SEGMENT = 0x04  # 分割された PDU。`04 04 <seq> <断片>`（C30）
 SEGMENT_SUB = 0x04
-SEGMENT_MAX = 4096  # 再組立の上限。純正アプリは 255 固定で溢れる（C30-2）
+SEGMENT_MAX = 4096  # 再組立の上限。公式アプリは 255 固定で溢れる（C30-2）
 SEGMENT_TIMEOUT = 3.0  # これ以上間隔が空いたら組み立てを捨てる（C30-2）
 
 # C9: メッシュ制御コマンド
@@ -257,7 +257,7 @@ def encrypt_mesh_pdu(pdu: bytes, event_key: bytes, link_key: bytes) -> bytes:
       3. 結果を link_key（周期 4）で XOR
       4. 0x06 + 元ヘッダ[1..5] + それ
 
-    純正アプリが送っていた暗号化 Ping をバイト単位で再現できることを確認済み。
+    公式アプリが送っていた暗号化 Ping をバイト単位で再現できることを確認済み。
     """
     body = pdu[6:]
     pad = 16 - (len(body) % 16)  # 0 にはならない（16 の倍数なら 16）
@@ -340,7 +340,7 @@ def make_night_dev(dst: bytes, src: bytes, level: int) -> bytes:
         msgdata = own(4) + [0xC0, 1, 0, level, 0, 0, 0, 0]
         dst が FF FF FF FF ならチャネル 0x2A、それ以外は 0x20
 
-    ⚠️ レベルは **0 / 1 / 2 の 3 段階**（0 が最も明るい）。純正アプリは
+    ⚠️ レベルは **0 / 1 / 2 の 3 段階**（0 が最も明るい）。公式アプリは
     ボタンを押すたびに 0 → 1 → 2 → 0 と巡回させている。
     """
     params = bytes([0x01, 0x00, level]) + bytes(4)
@@ -395,7 +395,7 @@ def make_ping_all(src: bytes) -> bytes:
     [5]     0xFE          ← 専用チャネル。0x20 ではない
     [6..9]  送信元 vAddr
 
-    ⚠️ 実機では**応答が返ってこなかった**。純正アプリもこのチャネルを
+    ⚠️ 実機では**応答が返ってこなかった**。公式アプリもこのチャネルを
     使っていない（`getJoinCheckType() != 0` のときだけ呼ばれる条件付き）。
     器具の探索には make_get_product_id / make_get_group_id を使う。
     """
@@ -451,7 +451,7 @@ class RawAdvertiser:
         self.dev = dev
         self.addr = addr  # HCI 順（リトルエンディアン）
         # ⭐ AD に入れる 6 バイトは「コントローラの識別子」で、
-        #   広告アドレスとは別物（C31）。純正アプリは初回にランダム生成した
+        #   広告アドレスとは別物（C31）。公式アプリは初回にランダム生成した
         #   疑似 MAC を SharedPreferences に永続化して使い続ける。
         #   ctrl_id が None のときだけ従来どおり広告アドレスを流用する
         self.ctrl_id = ctrl_id if ctrl_id is not None else bytes(reversed(addr))
@@ -584,7 +584,7 @@ def new_random_static_addr() -> bytes:
 def new_ctrl_id() -> bytes:
     """コントローラ識別子（AD に入れる 6 バイト）を作る（C31）。
 
-    純正アプリは `BleUtil.getBTMac()` でランダムな MAC 形式文字列を作って
+    公式アプリは `BleUtil.getBTMac()` でランダムな MAC 形式文字列を作って
     永続化している。BLE のアドレスとは無関係の、ただの識別子。
     """
     return os.urandom(6)
@@ -619,7 +619,7 @@ def load_or_create_addr(path: str) -> bytes:
 
 
 def load_or_create_ctrl_id(path: str) -> bytes:
-    """コントローラ識別子を永続化する（純正アプリと同じ方針・C31）。"""
+    """コントローラ識別子を永続化する（公式アプリと同じ方針・C31）。"""
     if os.path.exists(path):
         with open(path, "rb") as f:
             cid = f.read(6)
@@ -727,7 +727,7 @@ class Device:
 class Intent:
     """1 操作の「期待状態」と収束の追跡（P2 / P4）。
 
-    純正アプリは各コマンドを 1 回送って終わり（C18-5）。ここでは
+    公式アプリは各コマンドを 1 回送って終わり（C18-5）。ここでは
     **期待どおりの状態応答が返るまで送り直し、返らなければ失敗と言う。**
 
     ⭐ コマンドと状態応答のエンコーディングが同一なので（C15-9 / C18-4）、
@@ -1249,7 +1249,7 @@ class Daemon:
 
         # ⭐ リンク方針（C33 の実測で single が正しいと判った）
         #
-        #   single … 参加したら広告を止め、主リンク 1 本だけ残す（純正アプリと同じ）
+        #   single … 参加したら広告を止め、主リンク 1 本だけ残す（公式アプリと同じ）
         #   multi  … 広告を出し続けて複数リンクを維持しようとする（従来動作）
         #
         # ⚠️ multi は**動かない**。実測すると、新しいリンクが確立するたびに
@@ -1393,7 +1393,7 @@ class Daemon:
         実測（C33）: 受け付けたままにすると器具が次々に繋いできて、そのたびに
         メッシュが古いリンクを切る（新リンク確立の 0.7〜1.4 秒後・完全な交互）。
         「コントローラ 1 台につきリンク 1 本」しか許されないため、
-        2 本目を迎えようとすると 1 本目を失う。純正アプリが
+        2 本目を迎えようとすると 1 本目を失う。公式アプリが
         `peripheral_stop_adv_after_welcome = true` にしているのはこのため（C29-3）。
 
         ⚠️ ただし**広告を消すことはできない。** BlueZ が 150〜240 ms 後に必ず
@@ -1410,7 +1410,7 @@ class Daemon:
     def prune_links(self) -> None:
         """主リンク以外を自分から切る（`link_policy = single`）。
 
-        ⚠️ 純正アプリは余剰リンクに `01 15 55`（exit_cmd）を送って追い出すが、
+        ⚠️ 公式アプリは余剰リンクに `01 15 55`（exit_cmd）を送って追い出すが、
         **BlueZ ではそれができない。** Notify は D-Bus の `PropertiesChanged`
         なので購読中の全リンクにブロードキャストされ、主リンクまで切ってしまう。
         代わりに `Device1.Disconnect()` を使う（相手を指定できる）。
@@ -1472,7 +1472,7 @@ class Daemon:
         書式: `04 04 <seq バイト> <断片…>`
               seq バイト = (最終 seq << 4) | この seq（どちらも 1〜15）
 
-        ⚠️ 純正アプリの実装（`MeshCommon.processSegmentPDU`）には
+        ⚠️ 公式アプリの実装（`MeshCommon.processSegmentPDU`）には
         **欠落を検知しても状態をリセットしない**という致命的な欠陥があり、
         1 個落ちると以降のすべての分割転送が壊れる（C30-1）。
         ここでは以下を直している。
@@ -1593,7 +1593,7 @@ class Daemon:
             return
 
         if sub == CMD_WELCOME:
-            # ⭐ 純正アプリは WELCOME に対して、
+            # ⭐ 公式アプリは WELCOME に対して、
             #    主リンク（最初の器具）→ 何も返さない
             #    2 台目以降（バックアップ）→ SET_LINK (01 10) を返す
             #   （PlMeshPeripheral.onCharacteristicWriteRequest。C23-7）
@@ -1639,7 +1639,7 @@ class Daemon:
 
         ⚠️ 以前は「応答してはいけない」としていた（C19-2）が、それは
         **エコーバックという誤答**だったため切断されていただけだった。
-        純正アプリと同じ正しい応答は再現できる（C23-2）。
+        公式アプリと同じ正しい応答は再現できる（C23-2）。
         """
         if len(body) != 16:
             log(f"[!] PERIPHERAL_LOGIN の長さが想定外（{len(body)} バイト）: {hexs(body)}")
@@ -1670,14 +1670,14 @@ class Daemon:
     def _auto_discover(self) -> bool:
         """参加直後に器具一覧を集める。
 
-        純正アプリと同じ順序で送る（C23-5）。
+        公式アプリと同じ順序で送る（C23-5）。
 
           1. Ping（チャネル 0xFE）を**暗号化して**送る
              → 器具が MAC + vAddr + 機種 + ファームを返す
           2. MSGID 0x02 → 器具が 0x80 で MAC と製品コードを返す
           3. MSGID 0xD0 01 → 器具が 0xD7 でグループ ID を返す
 
-        平文の 2・3 だけでは応答が来なかった（C20-1）。純正アプリのログでは
+        平文の 2・3 だけでは応答が来なかった（C20-1）。公式アプリのログでは
         必ず先に暗号化 Ping が飛んでいる。
         """
         if not self.connected:
@@ -1783,7 +1783,7 @@ class Daemon:
             self._check_intents()
             return
 
-        # ⭐ 他のコントローラ（純正アプリなど）が送ったコマンドが平文で見える（C28）。
+        # ⭐ 他のコントローラ（公式アプリなど）が送ったコマンドが平文で見える（C28）。
         #    器具は状態変化を自発通知しないが、コマンドは中継されてくるので、
         #    それを読んで状態に反映できる。
         if msgid in (MSGID_BRIGHT_LIGHT, MSGID_BRIGHT_LIGHT_GROUP,
@@ -2286,7 +2286,7 @@ class Daemon:
 
         レベルは 0 / 1 / 2 の 3 段階で 0 が最も明るい。
         ⚠️ 専用ナイトライトは天井灯タイプ（`isCeilingLight`）だけが対応する。
-        非対応の器具では純正アプリも「明るさコード 17〜19（15/10/5%）」で代用しており、
+        非対応の器具では公式アプリも「明るさコード 17〜19（15/10/5%）」で代用しており、
         それは `/level?bright=15` などで同じことができる。
         """
         if level not in (0, 1, 2):
@@ -2343,7 +2343,7 @@ class Daemon:
     def ping_all(self) -> tuple[bool, str]:
         """Ping（チャネル 0xFE）を暗号化して送る（C23-5）。
 
-        純正アプリはここを暗号化して送っていた。応答（MAC + vAddr + 機種）も
+        公式アプリはここを暗号化して送っていた。応答（MAC + vAddr + 機種）も
         暗号化されて返るが、C23 で復号できる。
         """
         if self.own_vaddr is None:
@@ -2788,19 +2788,19 @@ def main() -> int:
         "--set-link",
         choices=["never", "auto", "always"],
         default="never",
-        help="SET_LINK (01 10) を送る条件。never=送らない（純正アプリの主リンクと同じ・既定）"
+        help="SET_LINK (01 10) を送る条件。never=送らない（公式アプリの主リンクと同じ・既定）"
         " / auto=2 台目以降の WELCOME にだけ / always=毎回（C19-8 の従来動作）",
     )
     ap.add_argument(
         "--no-login-reply",
         action="store_true",
         help="PERIPHERAL_LOGIN に応答しない（C19-2 の従来動作）。"
-        "既定では純正アプリと同じ正しい応答を返す（C23-2）",
+        "既定では公式アプリと同じ正しい応答を返す（C23-2）",
     )
     ap.add_argument(
         "--ctrl-id-file",
         default="/var/lib/odelicd/ctrl_id",
-        help="AD に入れるコントローラ識別子の保存先。純正アプリも疑似 MAC を"
+        help="AD に入れるコントローラ識別子の保存先。公式アプリも疑似 MAC を"
         "永続化して使い続ける（C31）",
     )
     ap.add_argument(

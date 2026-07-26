@@ -56,7 +56,7 @@ adv_on() {
     adv_off >/dev/null 2>&1 || true
 
     # LE Set Advertising Parameters
-    #   interval min/max = 0x00A0 (100ms) ← 純正アプリの ADVERTISE_MODE_LOW_LATENCY 相当
+    #   interval min/max = 0x00A0 (100ms) ← 公式アプリの ADVERTISE_MODE_LOW_LATENCY 相当
     #   adv_type = 0x00 (ADV_IND: 接続可能・無指向) ← 器具から接続してもらう必要がある
     #   own_addr_type = 0x00 (public)
     #   channel map = 0x07 (全 3 チャネル)

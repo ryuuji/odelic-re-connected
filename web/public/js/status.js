@@ -208,8 +208,10 @@ function linksCard(m) {
     const rows = Object.entries(links).map(([mac, r]) =>
         el("tr", {}, [
             el("td", { class: "mono", text: mac }),
-            el("td", { text: String(r.up ?? r.establish ?? "—") }),
-            el("td", { text: String(r.down ?? r.disconnect ?? "—") }),
+            // ⚠️ キー名は odelicd の `LinkRecord.to_dict()` に合わせる。
+            //    `up` / `establish` を見ていたので、この 2 列は常に「—」だった
+            el("td", { text: String(r.up_count ?? "—") }),
+            el("td", { text: String(r.down_count ?? "—") }),
             el("td", { text: humanDuration(r.held_sec) }),
             el("td", { text: r.last_reason ?? r.reason ?? "—" }),
         ]),
@@ -249,7 +251,7 @@ function countersCard(info, m) {
                 //    「重複した状態応答」と「頼んでいない状態応答」だけ
                 ["状態応答 重複 / 非要求", `${m?.recv?.status_dup ?? "—"} / ${m?.recv?.status_unsolicited ?? "—"}`],
                 ["復号 成功 / 失敗", `${crypto.decrypted ?? "—"} / ${crypto.decrypt_failed ?? "—"}`],
-                // ⚠️ 分割 PDU の欠落は純正アプリの不安定さの核心だった（docs C30）
+                // ⚠️ 分割 PDU の欠落は公式アプリの不安定さの核心だった（docs C30）
                 ["分割 組立 / 欠落", `${crypto.segments_assembled ?? "—"} / ${crypto.segments_dropped ?? "—"}`],
                 ["確認待ち", `${num(tuning.confirm_delay_ms, 0)} ms（実測 RTT p90 × 2）`],
                 ["RTT p90", `${num(tuning.rtt_p90_ms, 1)} ms`],

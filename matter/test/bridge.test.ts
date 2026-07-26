@@ -494,7 +494,7 @@ describe("ブリッジの統合（偽 odelicd・BLE なし）", () => {
     it("段が実際に違えば書き換える（他コントローラの操作を反映する）", async () => {
         await quiesce(stub);
         const f = bridge.fixtureOf(MAC_A)!;
-        // 純正アプリなどで 40% に変えられた体にする
+        // 公式アプリなどで 40% に変えられた体にする
         stub.devices[0]!.on = true;
         stub.devices[0]!.night = 0;
         stub.devices[0]!.bright = 40;

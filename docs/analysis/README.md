@@ -14,9 +14,9 @@
 | 目的 | 読むもの |
 | --- | --- |
 | ⭐ **どこで間違えたかを知りたい**（同じ穴に落ちないため） | [history.md](history.md) |
-| 製品と純正アプリの前提を知りたい | [01-findings.md](01-findings.md) |
+| 製品と公式アプリの前提を知りたい | [01-findings.md](01-findings.md) |
 | **自分の手で解析を再現したい** | [04-analysis-procedure.md](04-analysis-procedure.md) |
-| 純正アプリが不安定な理由を知りたい | [03-instability.md](03-instability.md) |
+| 公式アプリが不安定な理由を知りたい | [03-instability.md](03-instability.md) |
 | ⛔ 作らなかった Android アプリの設計 | [05-app-design.md](05-app-design.md) |
 | 設定ページを作るときに踏んだ罠 | [09-handoff-web-ui.md](09-handoff-web-ui.md) |
 | 解析に使ったスクリプト | [tools/](tools/) |
@@ -57,6 +57,6 @@
 ## 法的な位置づけ
 
 自身が所有する照明器具を相互運用（interoperability）するための解析。
-プロトコル知識をもとに独自実装を行うもので、**純正アプリのコードやアセットを
+プロトコル知識をもとに独自実装を行うもので、**公式アプリのコードやアセットを
 再配布しない**。→ 実装が案 D（完全自前実装）に落ち着いた経緯は
 [05-app-design.md](05-app-design.md) の冒頭。
