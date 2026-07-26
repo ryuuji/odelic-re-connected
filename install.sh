@@ -97,10 +97,12 @@ echo
 
 # ------------------------------------------------------------ ① odelicd
 
+# ⚠️ サブスクリプトは `bash` 経由で呼ぶ。⭐ tarball や zip で配ると
+#    実行ビットが落ちることがあり、`Permission denied` で止まる（実際に踏んだ）。
 echo "################################################################"
 echo "#  1/3  odelicd（BLE で照明を操作する常駐デーモン）"
 echo "################################################################"
-"$SRC/odelicd/install.sh" "$ID" "$PORT"
+bash "$SRC/odelicd/install.sh" "$ID" "$PORT"
 
 # ------------------------------------------------------------ ② Matter
 
@@ -109,7 +111,7 @@ if [ "$SKIP_MATTER" = 0 ]; then
     echo "################################################################"
     echo "#  2/3  odelic-matter（Google Home / Apple Home / Alexa 向け）"
     echo "################################################################"
-    "$SRC/matter/install.sh" "$ODELICD_URL"
+    bash "$SRC/matter/install.sh" "$ODELICD_URL"
 fi
 
 # ------------------------------------------------------------ ③ 設定ページ
@@ -129,7 +131,7 @@ if [ "$SKIP_WEB" = 0 ]; then
     #    /tmp は Pi では tmpfs（RAM）なので SD カードにも残らない。
     WEB_LOG="$(umask 077 && mktemp)"
     trap 'rm -f "$WEB_LOG"' EXIT
-    "$SRC/web/install.sh" 2>&1 | tee "$WEB_LOG"
+    bash "$SRC/web/install.sh" 2>&1 | tee "$WEB_LOG"
     WEB_PASSWORD="$(sed -n 's/^[[:space:]]*⭐ パスワード:[[:space:]]*//p' "$WEB_LOG" | head -1)"
     rm -f "$WEB_LOG"
     trap - EXIT
@@ -172,8 +174,15 @@ fi
 if [ "$SKIP_MATTER" = 0 ]; then
     echo
     echo "Matter（Google Home / Apple Home / Alexa）:"
-    echo "  手入力コードは上の出力か次のコマンドで確認できます:"
-    echo "    sudo journalctl -u odelic-matter | grep -A2 手入力コード"
+    if [ "$SKIP_WEB" = 0 ]; then
+        # ⭐ 設定ページを入れているなら、そちらを案内する（スマホで見たまま入力できる）
+        echo "  設定ページ →「Matter」タブ に手入力コードが出ています"
+    else
+        echo "  手入力コードは上の出力か次のコマンドで確認できます:"
+        echo "    sudo journalctl -u odelic-matter | grep -A2 手入力コード"
+    fi
+    echo "  ⚠️ Google Home は先に Developer Console でのテスト VID 登録が必要です"
+    echo "     （0xFFF1 / 0x8001。→ README の「Google Home に追加する」）"
     echo "  ⚠️⚠️ commissioning の直後にブリッジを再起動しないでください"
     echo "     （Nest ハブが配下の器具を失う既知バグ。→ docs/07-matter.md M9）"
 fi

@@ -30,15 +30,40 @@ SRC="$(cd "$(dirname "$0")" && pwd)"
 DEST=/opt/odelicd
 
 echo "=== 依存の確認 ==="
-for pkg in python3-dbus python3-gi bluez; do
-    if ! dpkg -s "$pkg" >/dev/null 2>&1; then
-        echo "  $pkg が未インストールです。導入します"
-        apt-get install -y "$pkg"
-    else
+# ⚠️ python3-cryptography を忘れると odelicd が import で落ちる
+#    （送受信の AES に使う。素の Raspberry Pi OS には入っていない）
+MISSING=""
+for pkg in python3-dbus python3-gi python3-cryptography bluez curl; do
+    if dpkg -s "$pkg" >/dev/null 2>&1; then
         echo "  $pkg: OK"
+    else
+        echo "  $pkg: 未インストール"
+        MISSING="$MISSING $pkg"
     fi
 done
-command -v hcitool >/dev/null || { echo "エラー: hcitool がありません" >&2; exit 1; }
+if [ -n "$MISSING" ]; then
+    # ⚠️ update を先にやる。索引が古いと install が 404 で落ちる
+    echo "  導入します:$MISSING"
+    apt-get update -qq
+    # shellcheck disable=SC2086
+    apt-get install -y $MISSING
+fi
+
+# ⭐ Python から実際に import できるかを見る。パッケージが入っていても
+#    別の python を使っていると通らない（venv など）
+if ! python3 -c "import dbus, gi, cryptography" 2>/dev/null; then
+    echo "エラー: python3 から dbus / gi / cryptography を import できません" >&2
+    echo "  sudo apt-get install -y python3-dbus python3-gi python3-cryptography" >&2
+    exit 1
+fi
+echo "  ⭐ python3 から dbus / gi / cryptography を import できました"
+
+# ⚠️ raw HCI で広告を出すのに使う（BlueZ の D-Bus 広告は Pi 3 で使えない・docs C19-5）
+command -v hcitool >/dev/null || {
+    echo "エラー: hcitool がありません（bluez に含まれます）" >&2
+    echo "  sudo apt-get install -y bluez" >&2
+    exit 1
+}
 
 echo
 echo "=== ファイルの配置 ==="

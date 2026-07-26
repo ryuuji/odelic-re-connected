@@ -57,13 +57,34 @@ if [ "$ACTION" = "--show-password" ]; then
     exit 0
 fi
 
+# --------------------------------------------------------------- 依存の確認
+echo "=== 依存の確認 ==="
+# ⚠️ openssl は gencert.sh が使う。無いと HTTPS の証明書が作れない
+MISSING=""
+for pkg in openssl curl; do
+    if dpkg -s "$pkg" >/dev/null 2>&1; then
+        echo "  $pkg: OK"
+    else
+        echo "  $pkg: 未インストール"
+        MISSING="$MISSING $pkg"
+    fi
+done
+if [ -n "$MISSING" ]; then
+    echo "  導入します:$MISSING"
+    apt-get update -qq
+    # shellcheck disable=SC2086
+    apt-get install -y $MISSING
+fi
+
 # ------------------------------------------------------------------ Node
+echo
 echo "=== Node.js の確認 ==="
 node_major() { node -p 'process.versions.node.split(".")[0]' 2>/dev/null || echo 0; }
 if ! command -v node >/dev/null 2>&1 || [ "$(node_major)" -lt 20 ]; then
     CAND="$(apt-cache policy nodejs 2>/dev/null | awk '/Candidate:/{print $2}')"
     CAND_MAJOR="${CAND%%.*}"
     if [ -n "${CAND_MAJOR:-}" ] && [ "$CAND_MAJOR" -ge 20 ] 2>/dev/null; then
+        apt-get update -qq
         apt-get install -y nodejs npm
     else
         echo "エラー: Node.js 20 以降が必要です" >&2
@@ -102,7 +123,7 @@ fi
 # ------------------------------------------------------- 共有パッケージ
 echo
 echo "=== 共有パッケージ @odelic/common ==="
-"$SRC/../common/install.sh" --skip-test
+bash "$SRC/../common/install.sh" --skip-test
 
 # ------------------------------------------------------------ 配置とビルド
 echo
@@ -156,7 +177,7 @@ chmod 0644 "$CONFDIR/config.json"
 echo
 echo "=== HTTPS 証明書 ==="
 # ⭐ ユーザーを作った**後**に実行する（server.key を 0640 で odelic-web グループにするため）
-"$SRC/gencert.sh"
+bash "$SRC/gencert.sh"
 
 # --------------------------------------------------- 特権ヘルパと sudoers
 echo

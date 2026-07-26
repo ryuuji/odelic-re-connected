@@ -127,8 +127,10 @@ fi
 mv "$SRC" "$DEST"
 say "  $DEST に展開しました"
 
-# ⚠️ tarball は実行ビットを保っているが、念のため立て直す
-chmod +x "$DEST/install.sh" 2>/dev/null || true
+# ⚠️⚠️ tarball の実行ビットは当てにできない（git 側が 100644 だと落ちる）。
+#    ⭐ ここで全部立て直す。落ちていると `Permission denied` で止まる
+find "$DEST" -name "*.sh" -exec chmod +x {} + 2>/dev/null || true
+chmod +x "$DEST/web/backup-helper.py" 2>/dev/null || true
 
 # ---------------------------------------------------------------- 本体へ
 

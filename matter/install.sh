@@ -34,6 +34,7 @@ if ! command -v node >/dev/null 2>&1 || [ "$(node_major)" -lt 20 ]; then
     CAND_MAJOR="${CAND%%.*}"
     if [ -n "${CAND_MAJOR:-}" ] && [ "$CAND_MAJOR" -ge 20 ] 2>/dev/null; then
         echo "  apt の nodejs ($CAND) を導入します"
+        apt-get update -qq
         apt-get install -y nodejs npm
     else
         cat >&2 <<'EOF'
@@ -75,7 +76,7 @@ fi
 echo
 echo "=== 共有パッケージ @odelic/common ==="
 # ⭐ ここを先にやる。matter は @odelic/common に依存している
-"$SRC/../common/install.sh" --skip-test
+bash "$SRC/../common/install.sh" --skip-test
 
 echo
 echo "=== ファイルの配置とビルド ==="
