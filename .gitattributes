@@ -1,0 +1,18 @@
+# 既定: テキストと判定したものは正規化して LF で保存する
+* text=auto
+
+# ⚠️⚠️ Raspberry Pi で動かすものは **必ず LF** にする。
+#    CRLF になると shebang が `#!/bin/bash\r` として解釈され、
+#    「bash^M: そのようなファイルやディレクトリはありません」で動かない。
+#    Windows の作業ツリーから scp で送ったときに実際に起きる。
+*.sh      text eol=lf
+*.py      text eol=lf
+*.service text eol=lf
+
+# バイナリ（変換させない）
+*.png binary
+*.jpg binary
+*.gif binary
+*.pdf binary
+*.apk binary
+*.so  binary
