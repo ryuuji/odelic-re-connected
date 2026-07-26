@@ -55,6 +55,13 @@ Google Home / Apple Home / Alexa から音声で操作したり、スマート�
 | [![Matter](docs/images/web-matter.png)](docs/images/web-matter.png) | [![ログ](docs/images/web-logs.png)](docs/images/web-logs.png) |
 | 登録状況と追加用コード | パスワードや鍵は伏せて表示 |
 
+スマートフォンからは、設定ページと Google Home のどちらでも操作できます。
+
+| 設定ページ（スマートフォン） | Google Home |
+| --- | --- |
+| <img src="docs/images/web-lights-phone.png" width="280" alt="設定ページ（スマートフォン）"> | <img src="docs/images/googlehome.png" width="280" alt="Google Home の照明カード"> |
+| 明るさ・色温度・常夜灯を 1 本のスライダーで | 標準の照明として明るさと色温度を操作 |
+
 ---
 
 ## 必要なもの
@@ -193,6 +200,12 @@ curl -fsSL https://raw.githubusercontent.com/ryuuji/odelic-re-connected/main/boo
 5. 部屋を選んで完了
 
 これで「ねえ Google、リビングの照明を 30% にして」が使えます。
+Google Home アプリからも、標準の照明として明るさと色温度を操作できます。
+
+<img src="docs/images/googlehome.png" width="300" alt="Google Home の照明カード">
+
+⭐ 下に並ぶ色の丸が色温度のプリセットです。電球色〜昼光色（2700K〜6500K）が
+そのまま使えます。明るさスライダーを下端まで下げると常夜灯になります。
 
 ### 追加に失敗するとき
 

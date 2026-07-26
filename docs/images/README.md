@@ -55,7 +55,7 @@ secure context として扱う）。
 
 | ファイル名 | 内容 | 撮り方 |
 | --- | --- | --- |
-| `google-home-card.png` | ⭐ Google Home の照明カード（明るさと色温度のスライダー） | スマートフォンで Google Home アプリのスクリーンショット |
+| ✅ `googlehome.png` | Google Home の照明カード（明るさと色温度のプリセット）。**撮影済み** | スマートフォンで Google Home アプリのスクリーンショット |
 | `google-home-list.png` | Google Home のデバイス一覧に 2 台出ているところ | 同上 |
 | `install-console.png` | `sudo ./install.sh` の完了画面（URL と初期パスワード） | ⚠️ 初期パスワードを消してから置く |
 | `metrics.png` | `curl /metrics` の出力 | ターミナルのスクリーンショット。⭐ テキストのままでも十分 |
@@ -72,7 +72,7 @@ secure context として扱う）。
 | --- | --- |
 | `web-lights.png` / `google-home-card.png` | [`../../README.md`](../../README.md) の「できること」 |
 | `web-*.png` | [`../08-web-ui.md`](../08-web-ui.md) の W4「画面」 |
-| `google-home-*.png` | [`../07-matter.md`](../07-matter.md) の M10b |
+| `googlehome.png` | ✅ [`../../README.md`](../../README.md) の「できること」と「Google Home に追加する」に掲載済み |
 | `install-console.png` | [`../../README.md`](../../README.md) の「インストール」 |
 
 ⚠️ **`.gitattributes` で `*.png` は `binary` 扱い** にしてある（改行を変換させない）。
