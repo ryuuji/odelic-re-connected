@@ -112,7 +112,23 @@ node -e "import('@odelic/common').then(m => {
 echo "  ビルドします"
 npm run build
 echo "  ⭐ テストを走らせます（BLE を使いません）"
-npm test
+# ⚠️⚠️ **テストの失敗でインストールを止めない。**
+#    Pi 3 は遅いので、時間に依存するテストが落ちることがある。そこで中断すると
+#    このスクリプトの残り（設定ファイルの作成・サービスの登録）が実行されず、
+#    **半端な状態が残ってもっと分かりにくい壊れ方をする**（実際に踏んだ）。
+#    ⭐ テストは「気付くため」に走らせる。配備を止める門にはしない。
+# ⚠️ 開発機では落ちたら止めたい。ODELIC_STRICT_TEST=1 でその挙動になる。
+TEST_FAILED=0
+if npm test; then
+    echo "  ✅ テスト OK"
+else
+    TEST_FAILED=1
+    echo "  ⚠️⚠️ テストが失敗しました（インストールは続けます）" >&2
+    if [ "${ODELIC_STRICT_TEST:-0}" = "1" ]; then
+        echo "エラー: ODELIC_STRICT_TEST=1 なので中断します" >&2
+        exit 1
+    fi
+fi
 # devDependencies（typescript）はもう不要
 npm prune --omit=dev --no-audit --no-fund
 chown -R "$SVCUSER:$SVCUSER" "$DEST"
@@ -152,6 +168,15 @@ echo
 echo "=== commissioning コード ==="
 journalctl -u odelic-matter -n 60 --no-pager | grep -A2 -E "手入力コード|QR ペイロード" || \
     echo "  まだ出ていません。sudo journalctl -u odelic-matter -f で待ってください"
+
+
+# ⚠️ テストが落ちていたら最後にもう一度言う（途中の出力は流れて見えない）
+if [ "$TEST_FAILED" = "1" ]; then
+    echo
+    echo "⚠️⚠️ テストが失敗しています（インストール自体は完了しました）"
+    echo "   動作に問題が出たら、上のテスト出力を添えて報告してください:"
+    echo "   https://github.com/ryuuji/odelic-re-connected/issues"
+fi
 
 cat <<EOF
 
