@@ -86,8 +86,7 @@ Google Home / Apple Home / Alexa から音声で操作したり、スマート�
 Raspberry Pi に SSH でログインして、1 行貼るだけです。
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/ryuuji/odelic-re-connected/main/bootstrap.sh \
-  | sudo sh -s -- 12345678
+curl -fsSL https://raw.githubusercontent.com/ryuuji/odelic-re-connected/main/bootstrap.sh | sudo sh -s -- 12345678
 ```
 
 `12345678` を自分の 8 桁 ID に置き換えてください。5〜10 分かかります。
@@ -127,8 +126,7 @@ sudo ./install.sh 12345678 --skip-web      # 設定ページは使わない
 **インストールと全く同じコマンド** で更新できます。8 桁 ID も同じものを渡してください。
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/ryuuji/odelic-re-connected/main/bootstrap.sh \
-  | sudo sh -s -- 12345678
+curl -fsSL https://raw.githubusercontent.com/ryuuji/odelic-re-connected/main/bootstrap.sh | sudo sh -s -- 12345678
 ```
 
 設定と登録情報はそのまま残ります。**やり直しになるものはありません。**

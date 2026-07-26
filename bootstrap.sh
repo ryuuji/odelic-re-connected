@@ -1,8 +1,10 @@
 #!/bin/sh
 # ODELIC 照明を Raspberry Pi から操作する一式を入れる（1 行インストーラ）。
 #
-#   curl -fsSL https://raw.githubusercontent.com/ryuuji/odelic-re-connected/main/bootstrap.sh \
-#     | sudo sh -s -- 12345678
+#   curl -fsSL https://raw.githubusercontent.com/ryuuji/odelic-re-connected/main/bootstrap.sh | sudo sh -s -- 12345678
+#
+#   ⭐ 1 行にしてある。行継続（\）を挟むと、端末やチャットに貼ったときに
+#      改行が落ちて `sh` が引数を受け取り損ねることがある。
 #
 # ⚠️ `sh -s --` が要る。`curl | sudo sh 12345678` では引数が sh 自身に渡ってしまう。
 #
