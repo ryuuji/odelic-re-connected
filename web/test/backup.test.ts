@@ -54,7 +54,33 @@ function usablePython(): string | null {
 }
 
 const PY = usablePython();
-const SKIP = PY === null ? "Unix の python3（pwd / grp が使えるもの）がありません" : false;
+
+/**
+ * ⚠️⚠️ ヘルパが隣に無いことがある。
+ *
+ * `web/install.sh` は `src` / `test` / `public` を `/opt/odelic-web` に配ってから
+ * `npm test` を回すが、`backup-helper.py` を置くのは**そのあと**（root 所有で
+ * 置く必要があり、`chown -R` の後にしなければならないため）。
+ *
+ * ⚠️ ここで fail させると **install.sh が set -e で中断し、sudoers が書かれない。**
+ *    実際にそれで「画面は新しいのに sudo が通らない」状態を作った。
+ *    → ⭐ 無ければ理由を書いて skip する。⭐ 配備後の検証は
+ *      `install.sh` が `"$DEST/backup-helper.py" --targets` で別途行っている。
+ */
+const HAS_HELPER = existsSync(HELPER);
+
+/** ⚠️ install.sh は root で回す。root では「非 root なら断る」を検査できない。 */
+const AS_ROOT = typeof process.getuid === "function" && process.getuid() === 0;
+
+/** ⚠️ ファイルを読むだけのテストも、ヘルパが無ければ readFileSync で落ちる */
+const NO_HELPER = HAS_HELPER ? false : `${HELPER} がまだ置かれていません`;
+
+const SKIP =
+    PY === null
+        ? "Unix の python3（pwd / grp が使えるもの）がありません"
+        : !HAS_HELPER
+          ? `${HELPER} がまだ置かれていません（install.sh はテストのあとに置く）`
+          : false;
 
 /** 配列リテラルからパスだけを抜く（`"...",  # コメント` の形を想定）。 */
 function pathsInBlock(body: string): string[] {
@@ -74,14 +100,14 @@ function helperTargets(): string[] {
 }
 
 describe("バックアップの特権ヘルパ", () => {
-    it("ヘルパとテストが存在する", () => {
-        assert.ok(existsSync(HELPER), `${HELPER} がありません`);
+    it("テストの一式が存在する", () => {
+        // ⚠️ HELPER はここでは要求しない（上のコメントの理由）
         assert.ok(existsSync(PY_TEST), `${PY_TEST} がありません`);
     });
 
     // ------------------------------------------- どの OS でも走らせる（読むだけ）
 
-    it("⭐ 復旧に要るものが対象から漏れていない", () => {
+    it("⭐ 復旧に要るものが対象から漏れていない", { skip: NO_HELPER }, () => {
         const helper = helperTargets();
         assert.ok(helper.length >= 5, `対象が少なすぎます: ${JSON.stringify(helper)}`);
         // ⚠️ 失うと復旧が重いもの。1 つでも抜けると「復元したのに動かない」になる
@@ -95,14 +121,14 @@ describe("バックアップの特権ヘルパ", () => {
         }
     });
 
-    it("⚠️ 対象は絶対パスだけ（相対だと実行時のカレント次第になる）", () => {
+    it("⚠️ 対象は絶対パスだけ（相対だと実行時のカレント次第になる）", { skip: NO_HELPER }, () => {
         for (const t of helperTargets()) {
             assert.ok(t.startsWith("/"), `絶対パスではありません: ${t}`);
             assert.ok(!t.includes(".."), `.. を含みます: ${t}`);
         }
     });
 
-    it("⚠️ sudoers に入れる 3 本が揃っている", () => {
+    it("⚠️ sudoers に入れる 3 本が揃っている", { skip: NO_HELPER }, () => {
         for (const f of ["set-id.sh", "set-api.sh", "backup-helper.py"]) {
             assert.ok(existsSync(join(WEB_ROOT, f)), `${f} がありません`);
         }
@@ -129,7 +155,9 @@ describe("バックアップの特権ヘルパ", () => {
         assert.deepEqual(printed, helperTargets());
     });
 
-    it("⚠️ root でなければ --info / --export / --restore を断る", { skip: SKIP }, () => {
+    it("⚠️ root でなければ --info / --export / --restore を断る", {
+        skip: SKIP || (AS_ROOT ? "root で実行中（install.sh 経由）なので検査できません" : false),
+    }, () => {
         for (const action of ["--info", "--export", "--restore"]) {
             const res = spawnSync(PY as string, [HELPER, action], { encoding: "utf8", input: "" });
             assert.notEqual(res.status, 0, `${action} が非 root で通った`);

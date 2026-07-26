@@ -291,10 +291,11 @@ async function route(
     // ------------------------------------------------- API の公開範囲（W12）
 
     if (method === "GET" && path === "/api/apiscope") {
-        const status = await deps.apiScope.status();
+        const { status, detail } = await deps.apiScope.status();
         // ⚠️ 取れなかったら null を返す。**`local` と嘘をつかない**
         //    （実は LAN に出ているのに閉じて見えるのが最悪）
-        sendJson(res, 200, { ok: status !== null, status });
+        // ⚠️ ただし理由は返す。捨てると画面から原因に辿り着けない
+        sendJson(res, 200, { ok: status !== null, status, detail });
         return;
     }
 

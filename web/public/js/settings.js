@@ -365,10 +365,28 @@ async function rollback(event, status, container) {
 function apiScopeCard(payload, container) {
     const status = payload?.status ?? null;
     if (status === null) {
+        // ⚠️⚠️ ここは **odelicd ではなく特権ヘルパ（set-api.sh）の問題**。
+        //    最初は「odelicd が動いているか確認してください」と書いていたが、
+        //    読んでいるのは /etc/default/odelicd というファイルなので、
+        //    odelicd の起動状態とは関係がない。誤った方向に誘導していた。
         return card(
             el("h2", { text: "API の公開範囲" }),
             // ⚠️ 取れないときに「localhost です」と書かない。実は開いているかもしれない
-            notice("warn", "今の設定を読み取れませんでした", "odelicd が動いているか確認してください。"),
+            notice(
+                "warn",
+                "今の設定を読み取れませんでした",
+                "設定ファイルを読む権限が無いか、インストールが古い可能性があります。" +
+                    "下の理由を見て、必要なら再インストールしてください。",
+            ),
+            payload?.detail ? el("pre", { class: "log", text: payload.detail }) : null,
+            el("p", { class: "muted", text: "Pi で確認するコマンド:" }),
+            el("pre", {
+                class: "log",
+                text:
+                    "ls -l /opt/odelic-web/set-api.sh\n" +
+                    "sudo cat /etc/sudoers.d/odelic-web\n" +
+                    "sudo -u odelic-web sudo -n /opt/odelic-web/set-api.sh --status",
+            }),
         );
     }
     const isLan = status.scope === "lan";

@@ -52,9 +52,13 @@ def check(cond: bool, msg: str) -> None:
 # ---------------------------------------------------- パス検証（ここが本題）
 
 # ⚠️ ヘルパは **POSIX の絶対パス**を前提にしている（Pi 上ではつねにそう）。
-#    開発機（Windows）でも同じ検証を通したいので、ドライブ直下に "/..." で作る。
-#    Python の open("/x") は Windows でも「カレントドライブの直下」に解決する
-root = "/odelic-bk-test"
+#    ⭐ POSIX なら普通の一時ディレクトリでよい（`/tmp/...` は既に POSIX 絶対パス）。
+#    ⚠️ Windows では `/x` が「カレントドライブの直下」に解決されるのを利用する
+#      （`C:\...` のままだと posixpath の検証が通らない）。
+if os.name == "posix":
+    root = tempfile.mkdtemp(prefix="odelic-bk-")
+else:
+    root = "/odelic-bk-test"
 shutil.rmtree(root, ignore_errors=True)
 h.TARGETS = [root + "/etc/odelic-web", root + "/var/odelicd.conf"]
 

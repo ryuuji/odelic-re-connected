@@ -60,14 +60,27 @@ export class ApiScope {
      * ⚠️ 取れなかったときは `null` を返す（**`local` と嘘をつかない**）。
      * 「安全側の既定を表示する」と、実は LAN に出ているのに閉じて見える。
      */
-    async status(): Promise<ApiScopeStatus | null> {
+    async status(): Promise<{ status: ApiScopeStatus | null; detail: string }> {
         const res = await this.invoke(["--status"]);
-        if (!res.ok) return null;
+        // ⚠️⚠️ **理由を捨てない。**ここを `null` だけ返す作りにしていたため、
+        //    画面には「読み取れませんでした」しか出ず、原因（sudoers の設定漏れ /
+        //    ヘルパが古い / 設定ファイルが無い）に辿り着けなかった。
+        if (!res.ok) {
+            this.opts.log?.(`[!] set-api.sh --status が失敗: ${res.detail}`);
+            return { status: null, detail: res.detail || "ヘルパを実行できませんでした" };
+        }
         const scope = /scope=(\S+)/.exec(res.stdout)?.[1];
         const bind = /bind=(\S+)/.exec(res.stdout)?.[1];
-        if (!isScope(scope) || bind === undefined) return null;
+        if (!isScope(scope) || bind === undefined) {
+            const detail = `ヘルパの出力を解釈できません: ${res.stdout.trim().slice(0, 120)}`;
+            this.opts.log?.(`[!] ${detail}`);
+            return { status: null, detail };
+        }
         const rawPort = /port=(\d+)/.exec(res.stdout)?.[1];
-        return { scope, bind, port: rawPort === undefined ? null : Number(rawPort) };
+        return {
+            status: { scope, bind, port: rawPort === undefined ? null : Number(rawPort) },
+            detail: "",
+        };
     }
 
     /**

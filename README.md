@@ -18,6 +18,7 @@ Google Home / Apple Home / Alexa から音声で操作したり、スマート�
 - [できること](#できること)
 - [必要なもの](#必要なもの)
 - [インストール](#インストール)
+- [アップデート](#アップデート)
 - [Google Home に追加する](#google-home-に追加する)
 - [スマートフォンから操作する](#スマートフォンから操作する)
 - [バックアップを取る](#バックアップを取る)
@@ -120,6 +121,31 @@ sudo ./install.sh 12345678 --skip-web      # 設定ページは使わない
 ```
 
 → 手動で入れる手順や Pi の初期設定から: [docs/06-raspberrypi-setup.md](docs/06-raspberrypi-setup.md)
+
+### アップデート
+
+**インストールと全く同じコマンド** で更新できます。8 桁 ID も同じものを渡してください。
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/ryuuji/odelic-re-connected/main/bootstrap.sh \
+  | sudo sh -s -- 12345678
+```
+
+設定と登録情報はそのまま残ります。**やり直しになるものはありません。**
+
+| 残るもの | 内容 |
+| --- | --- |
+| Matter の登録 | Google Home / Apple Home / Alexa の再追加は不要です |
+| 器具の名前・ケルビン設定 | `/etc/odelic-matter/config.json` を残します |
+| 設定ページのパスワード | 変わりません（新しいパスワードは表示されません） |
+| HTTPS の証明書 | ⭐ CA を作り直さないので、スマートフォンの再設定は不要です |
+| API の公開範囲 | localhost / LAN の選択を引き継ぎます |
+
+⚠️ 8 桁 ID を渡し忘れる、または別の値を渡すと `/etc/default/odelicd` が
+その値で書き換わります。**同じ ID を渡してください。**
+
+⚠️ `odelicd` の `--group` と `--resend` を手で変えていた場合は既定値に戻ります
+（設定ページからは変更できない項目です）。
 
 ---
 

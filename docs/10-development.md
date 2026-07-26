@@ -123,6 +123,11 @@ matter.js のバージョンが勝手に上がりかねないため。
 sudo ./install.sh <8桁ID>            # odelicd → matter → web を正しい順で入れる
 ```
 
+⭐ アップデートも同じコマンド。設定・Matter の登録・パスワード・CA は残る
+（`gencert.sh` は CA があれば作り直さない。`config.json` と `auth.json` も残す）。
+⚠️ ただし `/etc/default/odelicd` は毎回書き直すので、同じ 8 桁 ID を渡すこと。
+`ODELIC_BIND`（API の公開範囲）だけは既存の値を読んで引き継ぐ。
+
 個別に入れ直すとき、または一括インストーラが何をしているかを知りたいとき。
 
 | 対象 | 手順 |
