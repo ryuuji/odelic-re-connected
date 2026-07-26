@@ -422,8 +422,9 @@ python docs/analysis/tools/btsnoop.py sent artifacts/btsnoop_hci.log
 # ③ バイト差分。どのオフセットが何に対応するか
 python docs/analysis/tools/btsnoop.py diff artifacts/btsnoop_hci.log
 
-# ④ HOMEID を探す（ID 表示 12345678 → HOMEID 1234 = 0x04D2 → LE で FF 26）
-python docs/analysis/tools/btsnoop.py find artifacts/btsnoop_hci.log FF26 04D2
+# ④ HOMEID を探す（ID 表示 12345678 → HOMEID 1234 = 0x04D2 → LE で D2 04）
+#    ⚠️ find は逆順も自動で試すので、10 進のまま渡せば LE でも見つかる
+python docs/analysis/tools/btsnoop.py find artifacts/btsnoop_hci.log 04D2
 
 # ⑤ パスワードの ASCII を探す（"5678" → 35 36 37 38）
 python docs/analysis/tools/btsnoop.py find artifacts/btsnoop_hci.log 35363738

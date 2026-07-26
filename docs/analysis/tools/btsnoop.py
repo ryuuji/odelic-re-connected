@@ -17,8 +17,9 @@ Wireshark で目視するより、バイト列の差分を機械的に出すこ�
     # 送信コマンドのバイト差分。どのオフセットが何に対応するか
     python docs/analysis/tools/btsnoop.py diff artifacts/btsnoop_hci.log
 
-    # HOMEID 8803 をバイト列から探す（BCD / 16進の両方を試す）
-    python docs/analysis/tools/btsnoop.py find artifacts/btsnoop_hci.log 8803 2263
+    # HOMEID とパスワードをバイト列から探す（16 進で渡す。逆順も自動で試すので LE でも当たる）
+    #   HOMEID 1234 = 0x04D2 → 電波上は LE の D2 04 / パスワード "5678" = 35 36 37 38
+    python docs/analysis/tools/btsnoop.py find artifacts/btsnoop_hci.log 04D2 35363738
 
 仕様: btsnoop のフォーマットは
 https://fte.com/webhelp/sodera/Content/Documentation/WhitePapers/BPA600/Appendix/Header_Format/Snoop_File_Format.htm
@@ -1405,7 +1406,7 @@ def cmd_find(p: Parsed, args) -> None:
             patterns.append((f"{token} (逆順)", raw[::-1]))
 
     if not patterns:
-        print("有効なパターンがありません。例: 8803 2263")
+        print("有効なパターンがありません。例: 04D2 35363738")
         return
 
     base = _base_us(p)
@@ -1682,7 +1683,7 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     sp = add_common(sub.add_parser("find", help="バイト列パターンを検索"))
-    sp.add_argument("pattern", nargs="+", help="16 進パターン (例 8803 2263)")
+    sp.add_argument("pattern", nargs="+", help="16 進パターン (例 04D2 35363738)")
     sp.add_argument("--limit", type=int, default=30, help="1 パターンあたりの表示件数")
 
     sp = add_common(sub.add_parser("timeline", help="送受信を時系列に並べる"))
