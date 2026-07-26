@@ -53,6 +53,7 @@ sudo ./install.sh <実際の 8 桁 ID> 8080    # odelicd は /etc/default/odelic
 | 5 | **Raspberry Pi 版の実用化** | ✅ **完了・常駐運用中** | [06](docs/06-raspberrypi-setup.md) |
 | 5b | **状態取得（受信復号）** | ✅ **完了** | [02 C23](docs/02-protocol.md) / [06 P6](docs/06-raspberrypi-setup.md) |
 | 5c | **Matter 対応（Google Home から操作）** | ✅ **完了・稼働中** | [07](docs/07-matter.md) |
+| 5d | **設定ページとスマホ UI** | 🚧 **作りかけ**（共有パッケージと HTTPS 証明書まで） | [08](docs/08-web-ui.md) / [09 引き継ぎ](docs/09-handoff-web-ui.md) |
 | 6 | 新アプリの実装（Android） | 未着手 | [05](docs/05-app-design.md) |
 | 7 | 破壊的操作の解析（グループ設定・登録） | 未着手 | [04](docs/04-analysis-procedure.md) |
 

@@ -24,6 +24,9 @@ ODELIC「CONNECTED LIGHTING for HOME」対応照明器具を、BLE 経由で制�
 | [docs/05-app-design.md](docs/05-app-design.md) | 新アプリの設計方針 |
 | [docs/06-raspberrypi-setup.md](docs/06-raspberrypi-setup.md) | Raspberry Pi による検証環境（照明のそばに常設） |
 | [docs/07-matter.md](docs/07-matter.md) | ⭐ **Matter 対応**（Google Home / Apple Home / Alexa から操作する） |
+| [docs/08-web-ui.md](docs/08-web-ui.md) | 設定ページとスマホ UI の設計（🚧 作りかけ） |
+| [docs/09-handoff-web-ui.md](docs/09-handoff-web-ui.md) | ⭐ **引き継ぎ**（設定ページの現在地・決定事項・踏んだ罠） |
+| [tools/pi/README.md](tools/pi/README.md) | ⚠️ Pi 上の 3 プロセスとビルド順序・テストの罠 |
 
 ドキュメントは**事実（出典あり）／推測（仮説）／検証済み**を明示して書く。
 新しい情報が出たら該当ファイルに追記していく。

@@ -20,8 +20,9 @@
   ],
   "scripts": {
     "build": "tsc",
-    "clean": "node -e \"for (const d of ['dist','dist-test']) require('node:fs').rmSync(d,{recursive:true,force:true})\"",
-    "test": "npm run clean && tsc -p tsconfig.test.json && cd dist-test && node --test"
+    "clean": "node -e \"require('node:fs').rmSync('dist-test',{recursive:true,force:true})\"",
+    "test": "npm run clean && tsc -p tsconfig.test.json && cd dist-test && node --test",
+    "clean:all": "node -e \"for (const d of ['dist','dist-test']) require('node:fs').rmSync(d,{recursive:true,force:true})\""
   },
   "devDependencies": {
     "@types/node": "^20.19.9",
