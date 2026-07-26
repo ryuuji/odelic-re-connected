@@ -102,9 +102,28 @@ type AnyLightEndpoint = any;
 export class Fixture {
     readonly mac: string;
     readonly endpointId: string;
-    readonly name: string;
     readonly capability: Capability;
     readonly endpoint: AnyLightEndpoint;
+
+    /**
+     * 表示名。⭐ 設定ページから変えられるので `readonly` ではない（`setName()` を使う）。
+     *
+     * ⚠️ **Google Home 側の名前は上書きされない。**向こうは登録時に自分で名前を保存する
+     * （docs/07-matter.md M6）。UI にその旨を出すこと。
+     */
+    private nameValue: string;
+
+    get name(): string {
+        return this.nameValue;
+    }
+
+    /** 設定で明示された名前か（false なら MAC からの既定名）。設定ページの表示用。 */
+    readonly named: boolean;
+
+    /** 今この器具の状態が分かっているか。⭐ 設定ページの一覧に出す。 */
+    get isReachable(): boolean {
+        return this.reachable;
+    }
 
     /** odelicd への宛先。vAddr は変わり得るのでポーリングごとに更新する */
     vaddrKey: string;
@@ -169,7 +188,8 @@ export class Fixture {
     constructor(opts: FixtureOptions) {
         this.mac = normalizeMac(opts.mac);
         this.endpointId = macToEndpointId(this.mac);
-        this.name = opts.name ?? defaultFixtureName(this.mac);
+        this.nameValue = opts.name ?? defaultFixtureName(this.mac);
+        this.named = opts.name !== undefined && opts.name !== "";
         this.capability = opts.capability;
         this.scale = opts.scale;
         this.colorScale = opts.colorScale;
@@ -444,6 +464,23 @@ export class Fixture {
         //    実状態が変わったときだけ出るので量は多くない
         this.logFn(`  ${this.name}: Matter へ反映 ${this.describeState(want)}`);
         await this.endpoint.set(patch);
+    }
+
+    /**
+     * 表示名を変える（設定ページから）。
+     *
+     * ⭐ **ブリッジの再起動は要らない。**`nodeLabel` を書き換えれば Matter 側にも即座に伝わる。
+     *
+     * ⚠️ ただし **Google Home は登録時に自分で名前を保存している**ので、
+     * 向こうの表示は変わらない（docs/07-matter.md M6）。UI にそう出すこと。
+     * ⚠️ `nodeLabel` は 32 文字までなので切り詰める（Matter の仕様）。
+     */
+    async setName(name: string): Promise<void> {
+        const trimmed = name.trim();
+        if (trimmed === "" || trimmed === this.nameValue) return;
+        this.nameValue = trimmed;
+        await this.endpoint.set({ bridgedDeviceBasicInformation: { nodeLabel: trimmed.slice(0, 32) } });
+        this.logFn(`器具名を変更: ${this.mac} → ${trimmed}`);
     }
 
     /** ⭐ 「今この器具の状態が分かっているか」を Matter に伝える。 */

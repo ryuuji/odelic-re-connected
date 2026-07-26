@@ -7,8 +7,18 @@
 
 import { readFileSync } from "node:fs";
 
-import type { CapabilityOverride, MatterLightKind } from "@odelic/common";
+import {
+    type CapabilityOverride,
+    type MatterLightKind,
+    normalizeMac,
+    stripJsonComments,
+} from "@odelic/common";
 import type { ColorScale, LightScale } from "./mapping.js";
+
+// ⭐ MAC の扱いと JSONC パーサは `@odelic/common` に移した（`odelic-web` と共有する。
+//    ずれるとブリッジの器具名と Web のカードが一致しなくなる／設定例が片方でしか
+//    読めなくなる）。呼び出し側を変えずに済むようここから re-export する
+export { defaultFixtureName, isUnknownMac, normalizeMac, stripJsonComments } from "@odelic/common";
 
 export interface FixtureConfig extends CapabilityOverride {
     /** Google Home に出す表示名。未指定なら MAC から自動生成する */
@@ -26,6 +36,19 @@ export interface MatterConfig {
     storagePath: string;
     vendorName: string;
     productName: string;
+}
+
+/**
+ * 設定ページ（`odelic-web`）が叩く管理 API。
+ *
+ * ⚠️⚠️ **無認証。**`127.0.0.1` 以外に bind しようとすると起動時にエラーで止まる。
+ * 認証は `odelic-web` 側が持っている。
+ */
+export interface AdminApiConfig {
+    enabled: boolean;
+    /** ⚠️ localhost のみ */
+    host: string;
+    port: number;
 }
 
 export interface Config {
@@ -62,6 +85,8 @@ export interface Config {
     colorTempMaxKelvin: number;
     colorTempInverted: boolean;
     matter: MatterConfig;
+    /** ⭐ 設定ページ（odelic-web）向けの管理 API */
+    admin: AdminApiConfig;
     /** キーは器具の MAC（大文字コロン区切り） */
     fixtures: Record<string, FixtureConfig>;
 }
@@ -91,30 +116,19 @@ export const DEFAULT_CONFIG: Config = {
         vendorName: "odelic-re-connected",
         productName: "ODELIC Mesh Bridge",
     },
+    // ⚠️ 無認証なので localhost 固定。認証は odelic-web が持つ
+    admin: { enabled: true, host: "127.0.0.1", port: 8081 },
     fixtures: {},
 };
 
-/** MAC を大文字コロン区切りに正規化する。設定の書き方の揺れを吸収する。 */
-export function normalizeMac(mac: string): string {
-    const hex = mac.replace(/[^0-9a-fA-F]/g, "").toUpperCase();
-    if (hex.length !== 12) return mac.toUpperCase();
-    return (hex.match(/.{2}/g) ?? []).join(":");
-}
-
-/** MAC が未取得（オール 0）かどうか。この器具はエンドポイントを作れない。 */
-export function isUnknownMac(mac: string): boolean {
-    return normalizeMac(mac) === "00:00:00:00:00:00";
-}
-
-/** エンドポイント id に使える形にする。matter.js はこれでエンドポイント番号を永続化する。 */
+/**
+ * エンドポイント id に使える形にする。matter.js はこれでエンドポイント番号を永続化する。
+ *
+ * ⚠️ **Matter 固有なので `@odelic/common` には置かない。**`odelic-web` は
+ * エンドポイント番号を知る必要がない。
+ */
 export function macToEndpointId(mac: string): string {
     return `odelic-${normalizeMac(mac).replace(/:/g, "").toLowerCase()}`;
-}
-
-/** 名前が設定されていない器具の既定名。 */
-export function defaultFixtureName(mac: string): string {
-    const hex = normalizeMac(mac).replace(/:/g, "");
-    return `ODELIC ${hex.slice(-6)}`;
 }
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -140,7 +154,12 @@ export function loadConfig(path: string | undefined, warn: (msg: string) => void
     }
     if (!isRecord(raw)) throw new Error(`設定ファイルの中身がオブジェクトではありません: ${path}`);
 
-    const cfg: Config = { ...DEFAULT_CONFIG, matter: { ...DEFAULT_CONFIG.matter }, fixtures: {} };
+    const cfg: Config = {
+        ...DEFAULT_CONFIG,
+        matter: { ...DEFAULT_CONFIG.matter },
+        admin: { ...DEFAULT_CONFIG.admin },
+        fixtures: {},
+    };
 
     for (const [key, value] of Object.entries(raw)) {
         switch (key) {
@@ -167,6 +186,10 @@ export function loadConfig(path: string | undefined, warn: (msg: string) => void
             case "matter":
                 if (isRecord(value)) Object.assign(cfg.matter, pickMatter(value, warn));
                 else warn(`設定 matter はオブジェクトで指定してください`);
+                break;
+            case "admin":
+                if (isRecord(value)) Object.assign(cfg.admin, pickAdmin(value, warn));
+                else warn(`設定 admin はオブジェクトで指定してください`);
                 break;
             case "fixtures":
                 if (isRecord(value)) cfg.fixtures = pickFixtures(value, warn);
@@ -208,6 +231,31 @@ function pickMatter(raw: Record<string, unknown>, warn: (msg: string) => void): 
     return out;
 }
 
+function pickAdmin(raw: Record<string, unknown>, warn: (msg: string) => void): Partial<AdminApiConfig> {
+    const out: Partial<AdminApiConfig> = {};
+    for (const [key, value] of Object.entries(raw)) {
+        switch (key) {
+            case "enabled":
+                if (typeof value === "boolean") out.enabled = value;
+                else warn("設定 admin.enabled は true / false で指定してください");
+                break;
+            case "host":
+                // ⚠️ 値の妥当性（localhost かどうか）は AdminServer が起動時に見る。
+                //    ここで黙って直すと「直したつもりが効いていない」になる
+                if (typeof value === "string") out.host = value;
+                else warn("設定 admin.host は文字列で指定してください");
+                break;
+            case "port":
+                if (typeof value === "number" && Number.isInteger(value)) out.port = value;
+                else warn("設定 admin.port は整数で指定してください");
+                break;
+            default:
+                warn(`設定 admin に未知のキーがあります（無視します）: ${key}`);
+        }
+    }
+    return out;
+}
+
 function pickFixtures(raw: Record<string, unknown>, warn: (msg: string) => void): Record<string, FixtureConfig> {
     const out: Record<string, FixtureConfig> = {};
     for (const [mac, value] of Object.entries(raw)) {
@@ -239,44 +287,6 @@ function pickFixtures(raw: Record<string, unknown>, warn: (msg: string) => void)
             }
         }
         out[normalizeMac(mac)] = entry;
-    }
-    return out;
-}
-
-/** `//` と `/* *\/` を落とす。設定例にコメントを書けるようにするため。 */
-export function stripJsonComments(text: string): string {
-    let out = "";
-    let inString = false;
-    let escaped = false;
-    let i = 0;
-    while (i < text.length) {
-        const ch = text[i]!;
-        if (inString) {
-            out += ch;
-            if (escaped) escaped = false;
-            else if (ch === "\\") escaped = true;
-            else if (ch === '"') inString = false;
-            i++;
-            continue;
-        }
-        if (ch === '"') {
-            inString = true;
-            out += ch;
-            i++;
-            continue;
-        }
-        if (ch === "/" && text[i + 1] === "/") {
-            while (i < text.length && text[i] !== "\n") i++;
-            continue;
-        }
-        if (ch === "/" && text[i + 1] === "*") {
-            i += 2;
-            while (i < text.length && !(text[i] === "*" && text[i + 1] === "/")) i++;
-            i += 2;
-            continue;
-        }
-        out += ch;
-        i++;
     }
     return out;
 }

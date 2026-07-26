@@ -16,7 +16,8 @@
 
 import { LogLevel, Logger } from "@matter/main";
 
-import { BRIDGE_VERSION, Bridge } from "./bridge.js";
+import { AdminServer } from "./admin.js";
+import { BRIDGE_VERSION, Bridge, applySavedSettings } from "./bridge.js";
 import { loadConfig } from "./config.js";
 
 const START = Date.now();
@@ -77,6 +78,11 @@ async function main(): Promise<number> {
     // matter.js は Environment 経由でストレージ位置を受け取る
     process.env.MATTER_STORAGE_PATH = storage;
 
+    // ⭐ 設定ページで変えた値を config.json の上に重ねる。
+    //    ⚠️ config.json を書き戻すとコメントが消えるので別ファイルにしてある
+    const overridden = applySavedSettings(config, msg => log(`[!] ${msg}`));
+    if (overridden.length > 0) log(`設定ページの保存内容を反映: ${overridden.join(" / ")}`);
+
     log(`odelicd = ${config.odelicd} / ポーリング ${config.pollMs} ms / デバウンス ${config.debounceMs} ms`);
     log(
         `明るさ軸: 下端 ${config.nightBandPercent}% を常夜灯に割り当て / ` +
@@ -90,25 +96,44 @@ async function main(): Promise<number> {
     }
 
     const bridge = new Bridge({ config, log });
+    const admin = config.admin.enabled
+        ? new AdminServer({ bridge, host: config.admin.host, port: config.admin.port, log })
+        : undefined;
 
     let stopping = false;
     const shutdown = (signal: string): void => {
         if (stopping) return;
         stopping = true;
         log(`${signal} を受けたので終了します`);
-        void bridge
-            .stop()
+        void Promise.resolve()
+            .then(() => admin?.stop())
+            .then(() => bridge.stop())
             .catch(e => log(`[!] 終了処理で例外: ${e instanceof Error ? e.message : String(e)}`))
             .finally(() => process.exit(0));
     };
     process.on("SIGINT", () => shutdown("SIGINT"));
     process.on("SIGTERM", () => shutdown("SIGTERM"));
 
+    // ⭐ 設定ページからの再起動は「きれいに終わる」で実現する（systemd が上げ直す）
+    bridge.onRestartRequest = () => shutdown("設定ページからの再起動要求");
+
     try {
         await bridge.start();
     } catch (e) {
         log(`[!] 起動に失敗: ${e instanceof Error ? (e.stack ?? e.message) : String(e)}`);
         return 1;
+    }
+
+    if (admin !== undefined) {
+        try {
+            await admin.start();
+        } catch (e) {
+            // ⚠️ 管理 API が上がらなくても Matter は動く。止めずに理由だけ大きく出す
+            log(`[!] 管理 API を開始できません: ${e instanceof Error ? e.message : String(e)}`);
+            log("    設定ページからの器具名の変更と Matter の登録操作は使えません");
+        }
+    } else {
+        log("管理 API は無効です（設定 admin.enabled = false）。設定ページから操作できません");
     }
 
     for (const line of bridge.describe()) log(line);

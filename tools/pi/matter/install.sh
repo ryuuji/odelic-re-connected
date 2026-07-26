@@ -73,11 +73,16 @@ else
 fi
 
 echo
+echo "=== 共有パッケージ @odelic/common ==="
+# ⭐ ここを先にやる。matter は @odelic/common に依存している
+"$SRC/../common/install.sh" --skip-test
+
+echo
 echo "=== ファイルの配置とビルド ==="
 install -d -m 0755 "$DEST"
 # ソースと依存定義だけを配ってから Pi 上でビルドする
 # （dist は環境に依存しないが、tsc を Pi で通すことで取り違えを防ぐ）
-rm -rf "$DEST/src" "$DEST/test"
+rm -rf "$DEST/src" "$DEST/test" "$DEST/dist"
 cp -r "$SRC/src" "$DEST/src"
 cp -r "$SRC/test" "$DEST/test"
 cp "$SRC/package.json" "$SRC/tsconfig.json" "$DEST/"
@@ -93,6 +98,16 @@ if [ -f "$DEST/package-lock.json" ]; then
 else
     npm install --no-audit --no-fund
 fi
+
+# ⚠️⚠️ ここで必ず確かめる。`file:../common` の解決は Pi で一度壊れていた
+#    （/opt/odelic-matter/node_modules/@odelic が存在しないまま、分離前の古い dist で
+#     動いていた）。import が通ることを実際に確認してから先へ進む
+echo "  @odelic/common が解決できるか確認します"
+node -e "import('@odelic/common').then(m => {
+  if (typeof m.ladder !== 'function') throw new Error('ladder() が無い');
+  console.log('    OK: @odelic/common（段 ' + m.ladder(true).length + ' 段）');
+}).catch(e => { console.error('    NG: ' + e.message); process.exit(1); })"
+
 echo "  ビルドします"
 npm run build
 echo "  ⭐ テストを走らせます（BLE を使いません）"

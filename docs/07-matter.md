@@ -833,7 +833,65 @@ curl -s http://odelic-re-connected:8080/metrics | python3 -m json.tool
 
 ---
 
-## M12. 残る要検証
+## M12. ⭐ 管理 API（設定ページ向け・2026-07-26 追加）
+
+設定ページ [`odelic-web`](08-web-ui.md) が器具名と Matter の状態を読み書きする口。
+実装は [`matter/src/admin.ts`](../tools/pi/matter/src/admin.ts)。
+
+### ⚠️⚠️ localhost 限定・無認証
+
+認証は `odelic-web` 側で済ませてある。**`127.0.0.1` 以外に bind しようとすると
+起動時にエラーで止まる**（黙って直さない。LAN に開くと誰でも器具名を変えられ、
+フェアリングも破棄できてしまう）。二重の安全策として、リクエストの送信元が
+loopback でなければハンドラでも 403 を返す。
+
+| メソッド | パス | 内容 |
+| --- | --- | --- |
+| `GET` | `/admin/state` | 器具（名前・能力・到達状態）+ Matter の状態 |
+| `GET` / `POST` | `/admin/config` | 設定の読み書き。⭐ **再起動が要る項目名を応答で返す** |
+| `GET` | `/admin/commissioning` | commissioned / 手入力コード / QR / fabric 一覧 |
+| `POST` | `/admin/commissioning/open` | 追加フェアリング（multi-admin）の窓を開く |
+| `POST` | `/admin/fixtures/<mac>/name` | 器具名の変更 |
+| `DELETE` | `/admin/fixtures/<mac>` | 名簿から外す（⚠️ 破壊的） |
+| `POST` | `/admin/restart` | ⭐ 自分できれいに終わる（systemd が上げ直す） |
+| `POST` | `/admin/factory-reset` | ⚠️⚠️ フェアリングの破棄（合言葉「破棄する」が要る） |
+
+### ⭐ M12-1. 器具名の変更に再起動は要らない
+
+`bridgedDeviceBasicInformation.nodeLabel` を書き換えれば Matter 側に即座に伝わる。
+
+⚠️ ただし **Google Home 側の表示名は変わらない**（M6 のとおり、向こうは登録時に
+自分で名前を保存している）。UI にその旨を必ず出している。
+
+### ⭐ M12-2. 名前と設定の保存先を `config.json` から外した
+
+`config.json` は**コメント付きで配っている**（`config.example.json` が雛形）ので、
+プログラムから書き戻すと**コメントが全部消える**。
+
+| 何 | どこ | 優先順位 |
+| --- | --- | --- |
+| 器具の表示名 | `<storagePath>/fixtures.json` の `displayName` | ⭐ これ > `config.json` の `name` > 既定名 |
+| ケルビン範囲など | `<storagePath>/settings.json` | ⭐ 起動時に `config.json` に重なる |
+
+⚠️ 一度設定ページで名前を付けると `config.json` の `name` は効かなくなる。
+起動時のログにどちらを使ったかを出している。
+⭐ どちらも `/var/lib/odelic-matter` なのでバックアップ済み。
+
+### ⚠️⚠️ M12-3. commissioning 直後の再起動は 409 で断る
+
+`POST /admin/restart` は、**commissioning から 10 分以内なら拒否**する。
+M6-6 の「Nest ハブが配下の器具を失う」を踏まないため。
+UI には「あと約 N 分お待ちください」と理由つきで出る。
+
+### M12-4. QR は matter.js のものをそのまま返す
+
+`@matter/types` の `QrCode.get(qrPairingCode)` が**文字ブロックの QR** を返すので、
+それを `qrText` として返し、Web は `<pre>` に流すだけ。
+⭐ QR エンコーダのライブラリを足していない。
+
+---
+
+## M13. 残る要検証
 
 - [ ] Google Home が実際に commissioning を受けるか（テスト VID の登録込み）
 - [x] ケルビンの**向きと絶対値** → ✅ **確定**（製品スペック 2700〜6500K + 実機の目視。M4）

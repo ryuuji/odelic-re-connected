@@ -11,6 +11,9 @@
  * 3. **常夜灯の 1 軸マッピング** — 明るさ軸の下端に落ちたら `/night` が飛ぶこと
  */
 
+// ⚠️⚠️ これを @matter より先に import する（理由は helpers/storage.ts）
+import { cleanupMatterStorage } from "./helpers/storage.js";
+
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { createServer, type Server, type ServerResponse } from "node:http";
@@ -333,6 +336,7 @@ describe("ブリッジの統合（偽 odelicd・BLE なし）", () => {
         await bridge?.stop();
         await stub.close();
         rmSync(storageDir, { recursive: true, force: true });
+        cleanupMatterStorage();
     });
 
     it("⭐⭐ 人感センサーはエンドポイントにならない", () => {
@@ -705,6 +709,7 @@ describe("通電切れの検知を早める（追い打ちの状態要求）", (
         await bridge?.stop();
         await stub.close();
         rmSync(storageDir, { recursive: true, force: true });
+        cleanupMatterStorage();
     });
 
     it("⭐⭐ 取りこぼしを 1 回見つけたら、その器具に追い打ちの状態要求を打つ", async () => {

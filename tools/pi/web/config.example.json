@@ -1,0 +1,37 @@
+{
+  // odelic-web の設定。install.sh がこれを /etc/odelic-web/config.json の雛形にする。
+  // ⚠️ 秘密情報はここに書かない。パスワードのハッシュは stateDir/auth.json（0600）。
+
+  // ⭐ 照明の操作は odelicd に直接投げる（ブリッジを単一障害点にしないため）
+  "odelicd": "http://127.0.0.1:8080",
+
+  // 器具名と Matter の状態はブリッジの管理 API 経由（所有者を 1 つに保つ）。
+  // ⚠️ ブリッジが落ちていても照明は操作できる（名前が既定名に戻るだけ）
+  "bridgeAdmin": "http://127.0.0.1:8081",
+
+  // ⭐ この 1 ポートで HTTPS と「平文 HTTP で来た人のリダイレクト」の両方を受ける。
+  //    最初の 1 バイトが 0x16（TLS handshake）かどうかで振り分ける。
+  //    スマホで「host:8443」と打つとブラウザは http:// を既定にするので、
+  //    判別しないと意味の分からない TLS エラーになる
+  "port": 8443,
+  "bind": "::",
+
+  "tlsDir": "/etc/odelic-web/tls",
+  // パスワードのハッシュとセッションの置き場（systemd の StateDirectory）
+  "stateDir": "/var/lib/odelic-web",
+
+  // セッションの有効期限（秒）。既定 7 日
+  "sessionMaxAgeSec": 604800,
+
+  // odelicd の ?wait= に渡す ms。⭐ 実測の収束は 277〜320 ms なので余裕がある。
+  // 0 にすると「送った」だけで成功と表示してしまう（P4 に反する）ので下げすぎない
+  "waitMs": 1500,
+
+  // ⚠️ sudoers で許可する唯一のスクリプト。これ以外を root で動かさない
+  "setIdHelper": "/opt/odelic-web/set-id.sh",
+
+  // ログ画面で見られる unit。⚠️ ここに無い名前は journalctl に渡さない
+  "logUnits": ["odelicd", "odelic-matter", "odelic-web"],
+  // 1 回に取れる行数の上限（Pi 3 のメモリを守る）
+  "logMaxLines": 500
+}

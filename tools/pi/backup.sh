@@ -8,6 +8,8 @@
 # ⚠️⚠️ **出力には秘密情報が入る。**
 #   - /etc/default/odelicd    … 8 桁 ID（下位 4 桁はメッシュのパスワード）
 #   - /var/lib/odelic-matter  … Matter の fabric 秘密鍵
+#   - /etc/odelic-web/tls     … ⭐ ローカル CA の秘密鍵（漏れると偽サイトを作られる）
+#   - /var/lib/odelic-web     … 設定ページのパスワードのハッシュ
 #   そのため 0600・root 所有で作る。**そのまま他人に渡さないこと。**
 #
 # ⚠️ **SD カードの故障には、これ単体では効かない。**同じカードに置くので、
@@ -31,10 +33,12 @@ fi
 
 # 失うと復旧が重いものだけ。ログや再生成できるものは入れない
 TARGETS=(
-    /var/lib/odelic-matter        # ⭐ Matter の fabric 鍵・uniqueId・器具の名簿
+    /var/lib/odelic-matter       # ⭐ Matter の fabric 鍵・uniqueId・器具の名簿・設定ページで変えた設定
     /var/lib/odelicd             # 広告アドレス・コントローラ識別子（器具が覚えている）
     /etc/default/odelicd         # ⚠️ 8 桁 ID（メッシュのパスワードを含む）
     /etc/odelic-matter           # 器具名・ケルビン設定
+    /etc/odelic-web              # ⭐ ローカル CA の鍵（失うと全端末で信頼をやり直し）
+    /var/lib/odelic-web          # 設定ページのパスワード（scrypt ハッシュ）
 )
 
 list_backups() {

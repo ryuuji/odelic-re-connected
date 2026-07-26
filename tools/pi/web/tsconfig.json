@@ -1,0 +1,25 @@
+{
+  // ⚠️ `odelic-web` は他のパッケージから参照されないので型宣言を出さない。
+  //    出すと `dist/test/*.test.d.ts` が Node のテストランナーに拾われて
+  //    テスト数が水増しされる（docs/09 H8-2 で実際に踏んだ罠）。
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+
+    "rootDir": ".",
+    "outDir": "dist",
+
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "exactOptionalPropertyTypes": false,
+
+    "declaration": false,
+    "sourceMap": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true
+  },
+  "include": ["src/**/*.ts", "test/**/*.ts"]
+}

@@ -1,0 +1,56 @@
+[Unit]
+Description=ODELIC lighting web UI (settings page and phone UI)
+Documentation=https://github.com/caliljp/odelic-re-connected
+# odelicd に照明操作を投げ、ブリッジの管理 API で器具名と Matter を読み書きする。
+# ⭐ どちらも落ちていても起動する（照明の操作は odelicd さえ生きていればできる）
+After=network-online.target odelicd.service odelic-matter.service
+Wants=odelicd.service
+
+[Service]
+Type=simple
+EnvironmentFile=-/etc/default/odelic-web
+WorkingDirectory=/opt/odelic-web
+ExecStart=/usr/bin/node /opt/odelic-web/dist/src/main.js --config /etc/odelic-web/config.json
+
+User=odelic-web
+Group=odelic-web
+# ⭐ ログ画面のために journal を読む。sudo は使わない（sudo で許すのは set-id.sh だけ）
+SupplementaryGroups=systemd-journal
+
+# パスワードのハッシュとセッションの置き場。⚠️ 0700
+StateDirectory=odelic-web
+StateDirectoryMode=0700
+
+# ⚠️⚠️ NoNewPrivileges を true にしてはいけない。
+#    true にすると `sudo /opt/odelic-web/set-id.sh` が動かず、
+#    メッシュ ID の設定画面が「権限がありません」で死ぬ（原因が分かりにくい）。
+#    ⭐ 代わりに sudoers で **set-id.sh 1 本だけ**を許可し、そのスクリプト側で
+#       argv を 8 桁の数字 / --rollback / --status に厳格に絞っている。
+NoNewPrivileges=no
+
+Restart=always
+RestartSec=5
+
+# ⚠️ Pi 3 は RAM 1 GB。odelicd（31 MB）を OOM の犠牲にしないため上限を付け、
+#    死ぬ順番も odelicd → ブリッジ(200) → Web(300) になるようにする
+MemoryMax=192M
+OOMScoreAdjust=300
+
+# BLE も raw HCI も使わない
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+# ⚠️ TLS の鍵と設定は読むだけ（書き込みは StateDirectory へ）
+ReadOnlyPaths=/etc/odelic-web
+# ⚠️ AF_NETLINK が要る（Node の os.networkInterfaces() が使う）
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
+
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

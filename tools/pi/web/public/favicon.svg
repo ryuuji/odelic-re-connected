@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+    <!-- 天井灯を真下から見た形。⭐ 外周が主灯、中心が常夜灯 -->
+    <circle cx="16" cy="16" r="14" fill="#f2b705" />
+    <circle cx="16" cy="16" r="9" fill="#fff3cc" />
+    <circle cx="16" cy="16" r="3.5" fill="#f2b705" />
+</svg>

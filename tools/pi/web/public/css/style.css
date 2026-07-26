@@ -1,0 +1,1215 @@
+/*
+ * odelic-web のスタイル。⭐ **スマートフォンを先に考える**（家では手元の端末で操作する）。
+ *
+ * ⚠️ CSP が `style-src 'self'` なので**インライン style を使わない**。
+ *    値が動くところ（棒の長さ・段の帯の境目）は CSS 変数を JS から渡す。
+ *    ⭐ `element.style.setProperty()` は CSSOM 操作なので CSP に止められない
+ *    （止まるのは HTML の `style` 属性と `<style>` のパース）。
+ *
+ * ## ⭐ 配色は「光の色」に寄せてある
+ *
+ * この画面が扱うのは照明なので、アクセントは favicon と同じ琥珀（#f2b705）。
+ * ⚠️ 琥珀は明度が高く**白文字が乗らない**。用途で 3 つに分けてある。
+ *
+ * | 変数 | 用途 |
+ * | --- | --- |
+ * | `--accent` | 塗り（primary ボタン・選択中のタブ・点灯ランプ） |
+ * | `--accent-fg` | ⚠️ `--accent` の上に置く文字。**暗い色** |
+ * | `--accent-ink` | 文字・境界として使う濃い琥珀（地の上でも読める） |
+ *
+ * ## ⭐ 明るさの帯はテーマで変えない
+ *
+ * あれは「光そのものの色」を並べたものなので、暗いテーマでも同じ色でよい。
+ * ⚠️⚠️ ただし**左から右へ単調に明るくなること**、そして
+ * **消灯側はカードの地より暗いこと**。地より明るいと左端に明るい帯が浮き、
+ * 「白い線」に見える（実際にそうなっていた）。
+ *
+ * ⚠️⚠️ 帯そのもの（`--track`）は **JS が段ごとのべた塗りで作る**。
+ * フォールバックは `.slider-wrap` に置いてある。**`.slider-track` 側に置かないこと**
+ * （要素自身の宣言が祖先からの継承に勝ち、JS の値が毎回捨てられる）。
+ */
+
+:root {
+    color-scheme: light dark;
+
+    /* 面 */
+    --bg: #f6f4ef;
+    --card: #ffffff;
+    --sunken: #f1eee7; /* 入力欄・ログ・セグメントの地 */
+
+    /* 文字と線 */
+    --fg: #1c1a16;
+    --muted: #6d675e;
+    --line: #e4ded3;
+    --line-strong: #cdc5b6;
+
+    /* 琥珀 */
+    --accent: #f2b705;
+    --accent-fg: #251b00;
+    --accent-ink: #8a5e00;
+    --accent-soft: #fdf1d3;
+    /* 点灯している器具のカードの縁 */
+    --on-line: #edc978;
+
+    /*
+     * 明るさの帯の両端（テーマ非依存）。⚠️ 中身は JS が段ごとに作る（下の `.slider` 参照）。
+     * ここにあるのは JS が `--track` を入れられなかったときの保険。
+     */
+    --ramp-off: #0d0b08;
+    --ramp-main-hi: #fff5d8;
+    /*
+     * ⚠️⚠️ つまみの溝に**輪郭線を足さない。**
+     *    一度 1px の枠を付けたが、暗いテーマで明るい色にすると帯の暗い左端の上で
+     *    その線だけが光り、**「左端に白い線」になった**（右端は帯が明るいので見えず、
+     *    左だけに出るのでよけいに線に見える）。溝の形は角丸と帯の色だけで足りる。
+     */
+
+    --good: #146b3a;
+    --warn: #8a5300;
+    --bad: #b3271b;
+    --good-soft: #e6f4ec;
+    --warn-soft: #fbefda;
+    --bad-soft: #fbe8e5;
+    /* 面と同系で少しだけ濃い枠。⚠️ semantic 色そのままだと枠が主張しすぎる */
+    --good-line: #aad9be;
+    --warn-line: #e7cc95;
+    --bad-line: #ebb7b0;
+
+    --radius: 14px;
+    --radius-sm: 10px;
+    --tap: 44px; /* ⭐ 指で押せる最小サイズ */
+    /*
+     * つまみの直径。⚠️⚠️ **`:root` に置くこと。**
+     *
+     * JS の `bandedTrack()` が `calc(var(--thumb-size) / 2 + …)` で帯の境目を合わせており、
+     * その式を**評価するのは溝を塗る `.slider-track`**（つまみ側ではない）。
+     * `.slider` にだけ宣言すると兄弟要素からは辿れず、`var()` が解決できずに
+     * **`background` ごと無効になって帯が消える**（実際に消した）。
+     */
+    --thumb-size: 24px;
+    --shadow: 0 1px 2px rgb(30 24 14 / 0.05), 0 10px 24px -16px rgb(30 24 14 / 0.35);
+}
+
+@media (prefers-color-scheme: dark) {
+    :root {
+        --bg: #141210;
+        --card: #1f1c17;
+        --sunken: #191610;
+
+        --fg: #f2efe7;
+        --muted: #a19a8c;
+        --line: #322e26;
+        --line-strong: #494237;
+
+        --accent: #ffc233;
+        --accent-fg: #201700;
+        --accent-ink: #ffc94d;
+        --accent-soft: #2e2513;
+        --on-line: #6b5624;
+
+        /* ⭐ `--ramp-*` はテーマで変えない。光そのものの色なので暗いテーマでも同じ */
+
+        --good: #4ecb7c;
+        --warn: #e6a63f;
+        --bad: #ff7d6f;
+        --good-soft: #17301f;
+        --warn-soft: #2f2513;
+        --bad-soft: #341c19;
+        --good-line: #2c5a3d;
+        --warn-line: #5d4924;
+        --bad-line: #5f3029;
+
+        --shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 10px 24px -16px rgb(0 0 0 / 0.8);
+    }
+}
+
+* {
+    box-sizing: border-box;
+}
+
+html,
+body {
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: system-ui, -apple-system, "Hiragino Sans", "Noto Sans JP", sans-serif;
+    font-size: 16px;
+    line-height: 1.6;
+    -webkit-text-size-adjust: 100%;
+}
+
+/*
+ * ⭐ キーボードで操作したときだけ枠を出す（指で押したときは出さない）。
+ * ⚠️ ここで `border-radius` を触らない。要素それぞれの角丸を上書きしてしまう。
+ */
+:focus-visible {
+    outline: 2px solid var(--accent-ink);
+    outline-offset: 2px;
+}
+
+/* ---------------------------------------------------------------- 骨格 */
+
+/*
+ * ⚠️ ヘッダーとタブを**1 つの sticky**にまとめてある。
+ *    別々に貼ると「タブの top をヘッダーの実高さに合わせる」ハードコードが要り、
+ *    文字サイズを変えただけで隙間や被りが出る。
+ * ⚠️ ノッチの余白は body ではなくここに付ける。body に付けると
+ *    sticky が画面上端（= ノッチの下）ではなく余白の下で止まる。
+ */
+.topbar {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: var(--card);
+    border-bottom: 1px solid var(--line);
+    padding-top: env(safe-area-inset-top);
+}
+
+header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px max(14px, env(safe-area-inset-right)) 10px max(14px, env(safe-area-inset-left));
+}
+
+.mark {
+    flex: 0 0 auto;
+    width: 26px;
+    height: 26px;
+    display: block;
+}
+
+header h1 {
+    flex: 1;
+    min-width: 0;
+    margin: 0;
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+    line-height: 1.3;
+}
+
+/* ⭐ 「ODELIC Re-Connected」を主、「ウェブ管理画面」を従にして 2 行に畳む */
+header h1 .app,
+header h1 .sub {
+    display: block;
+    /* ⚠️ 320px 幅でも折り返さないこと。折り返すと接続ピルが押し出される */
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+header h1 .sub {
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--muted);
+    letter-spacing: 0.04em;
+}
+
+nav {
+    display: flex;
+    gap: 4px;
+    padding: 0 max(10px, env(safe-area-inset-right)) 8px max(10px, env(safe-area-inset-left));
+    overflow-x: auto;
+    scrollbar-width: none;
+}
+
+nav::-webkit-scrollbar {
+    display: none;
+}
+
+nav button {
+    flex: 0 0 auto;
+    min-height: 34px;
+    padding: 4px 14px;
+    border: 1px solid transparent;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--muted);
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+nav button[aria-current="page"] {
+    background: var(--accent);
+    color: var(--accent-fg);
+}
+
+main {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 16px max(14px, env(safe-area-inset-right)) calc(28px + env(safe-area-inset-bottom))
+        max(14px, env(safe-area-inset-left));
+}
+
+section[hidden] {
+    display: none;
+}
+
+/* ---------------------------------------------------------------- 部品 */
+
+.card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 16px;
+    margin-bottom: 12px;
+    box-shadow: var(--shadow);
+}
+
+/* カードの中に入れ子にするカード（照明器具名の行など）は浮かせない */
+.card .card {
+    box-shadow: none;
+    background: var(--sunken);
+}
+
+/* ⚠️ 入れ子カードの地は --sunken。入力欄も同じ色だと境目が消えるので白く抜く */
+.card .card input[type="text"],
+.card .card input[type="password"],
+.card .card input[type="number"] {
+    background: var(--card);
+}
+
+/*
+ * ⚠️ 見出しを本文より小さくしない。日本語は大文字の「eyebrow」が使えないので、
+ *    小さくすると単に読みにくいだけになる。大きさは本文と同じで太さと余白で差を付ける。
+ */
+.card > h2 {
+    margin: 0 0 12px;
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    color: var(--fg);
+}
+
+.card > h2 + .muted {
+    margin-top: -6px;
+}
+
+.card > h3 {
+    margin: 16px 0 8px;
+    font-size: 15px;
+    font-weight: 700;
+}
+
+.card > *:last-child {
+    margin-bottom: 0;
+}
+
+.row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.row.between {
+    justify-content: space-between;
+}
+
+.row.wrap {
+    flex-wrap: wrap;
+}
+
+.grow {
+    flex: 1;
+    min-width: 0;
+}
+
+.full {
+    width: 100%;
+}
+
+.muted {
+    color: var(--muted);
+    font-size: 13.5px;
+    line-height: 1.55;
+}
+
+.mono {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 12.5px;
+    font-variant-ligatures: none;
+}
+
+p {
+    margin: 0 0 10px;
+}
+
+.pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 2px 10px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+    border: 1px solid var(--line);
+    background: var(--sunken);
+    color: var(--muted);
+    white-space: nowrap;
+}
+
+/* ⭐ 色だけに頼らない。状態には必ず点を付ける */
+.pill::before {
+    content: "";
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+    opacity: 0.55;
+}
+
+.pill.good {
+    color: var(--good);
+    border-color: var(--good);
+    background: var(--good-soft);
+}
+.pill.warn {
+    color: var(--warn);
+    border-color: var(--warn);
+    background: var(--warn-soft);
+}
+.pill.bad {
+    color: var(--bad);
+    border-color: var(--bad);
+    background: var(--bad-soft);
+}
+.pill.good::before,
+.pill.warn::before,
+.pill.bad::before {
+    opacity: 1;
+}
+
+/* 数を示すだけのピル（状態ではない）は点を出さない */
+.pill.plain::before {
+    display: none;
+}
+
+button,
+input,
+select {
+    font: inherit;
+    color: inherit;
+}
+
+button {
+    min-height: var(--tap);
+    padding: 8px 16px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--line-strong);
+    background: var(--card);
+    font-weight: 600;
+    cursor: pointer;
+    transition:
+        transform 80ms ease,
+        background-color 120ms ease,
+        border-color 120ms ease;
+}
+
+button:hover:not(:disabled) {
+    border-color: var(--accent-ink);
+}
+
+button:active:not(:disabled) {
+    transform: translateY(1px);
+}
+
+button:disabled {
+    opacity: 0.42;
+    cursor: not-allowed;
+}
+
+button.primary {
+    background: var(--accent);
+    color: var(--accent-fg);
+    border-color: var(--accent);
+}
+
+button.danger {
+    color: var(--bad);
+    border-color: var(--bad);
+    background: transparent;
+}
+
+button.small {
+    min-height: 34px;
+    padding: 4px 12px;
+    font-size: 13.5px;
+}
+
+button.ghost {
+    background: transparent;
+    border-color: var(--line);
+    color: var(--muted);
+    font-weight: 500;
+}
+
+/*
+ * アイコンだけのボタン。⭐ 主役ではない操作に使う。
+ * ⚠️ 見た目は小さくても当たり判定は `--tap` を守る。
+ * ⚠️ アイコンだけにするときは呼び出し側で `aria-label` と `title` を必ず付ける。
+ */
+.icon-button {
+    width: var(--tap);
+    height: var(--tap);
+    min-height: var(--tap);
+    padding: 0;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    background: transparent;
+    border: 1px solid var(--line);
+    color: var(--muted);
+}
+
+.icon-button svg {
+    width: 19px;
+    height: 19px;
+    display: block;
+}
+
+.icon-button:hover:not(:disabled) {
+    color: var(--accent-ink);
+    border-color: var(--accent-ink);
+}
+
+/* ⭐ 押している間は回す。何も動かないと「押せていない」と思ってもう一度押される */
+.icon-button.busy svg {
+    animation: spin 800ms linear infinite;
+}
+
+/* タブの末尾に置く控えめな操作。⭐ 右下に逃がして本文の邪魔をしない */
+.tab-foot {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 4px;
+}
+
+/*
+ * 電源トグル。⭐ **状態表示と操作が 1 つ。**位置がそのまま状態になる。
+ *
+ * ⚠️ 見た目の溝は 52×32 だが、当たり判定は `--tap` を守る
+ *    （ボタン自体を 44px にして、中の溝を中央に置く）。
+ */
+.toggle {
+    flex: 0 0 auto;
+    width: 56px;
+    height: var(--tap);
+    min-height: var(--tap);
+    padding: 0;
+    border: 0;
+    background: transparent;
+    display: grid;
+    place-items: center;
+}
+
+.toggle-track {
+    display: block;
+    position: relative;
+    width: 52px;
+    height: 32px;
+    border-radius: 16px;
+    background: var(--sunken);
+    border: 1px solid var(--line-strong);
+    transition:
+        background-color 140ms ease,
+        border-color 140ms ease;
+}
+
+.toggle-knob {
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: #ffffff;
+    box-shadow: 0 1px 3px rgb(0 0 0 / 0.35);
+    transition: transform 140ms ease;
+}
+
+.toggle[aria-checked="true"] .toggle-track {
+    background: var(--accent);
+    border-color: var(--accent);
+}
+
+.toggle[aria-checked="true"] .toggle-knob {
+    transform: translateX(20px);
+}
+
+/* ⭐ 「すべて」でばらついているとき。全部オフと見分けが付くよう真ん中で止める */
+.toggle.is-mixed .toggle-track {
+    background: var(--accent-soft);
+    border-color: var(--accent-ink);
+}
+
+.toggle.is-mixed .toggle-knob {
+    transform: translateX(10px);
+}
+
+.toggle:hover:not(:disabled) .toggle-track {
+    border-color: var(--accent-ink);
+}
+
+input[type="text"],
+input[type="password"],
+input[type="number"] {
+    min-height: var(--tap);
+    padding: 8px 12px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--line-strong);
+    background: var(--sunken);
+    width: 100%;
+}
+
+input[type="text"]:focus,
+input[type="password"]:focus,
+input[type="number"]:focus {
+    background: var(--card);
+    border-color: var(--accent-ink);
+}
+
+select {
+    min-height: var(--tap);
+    padding: 6px 10px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--line-strong);
+    background: var(--sunken);
+}
+
+input[type="checkbox"] {
+    width: 20px;
+    height: 20px;
+    flex: 0 0 auto;
+    accent-color: var(--accent-ink);
+}
+
+label.field {
+    display: block;
+    margin-bottom: 14px;
+}
+
+label.field > span {
+    display: block;
+    font-size: 13.5px;
+    color: var(--muted);
+    margin-bottom: 5px;
+}
+
+/* 入力欄のあとに続く span は補足。ラベルと見分けが付くように下に寄せる */
+label.field > input + span {
+    margin: 5px 0 0;
+    font-size: 12.5px;
+}
+
+/* チェックボックスの行は行全体を押せるようにする */
+label.row {
+    min-height: 38px;
+    cursor: pointer;
+}
+
+/* ------------------------------------------------------------ スライダー */
+
+/*
+ * ⭐⭐ **トラックそのものを「明るさの目盛り」にする。**
+ *
+ * 器具は連続値を持たず、常夜灯 3 段 + 主灯 20 段しかない（docs/07 M3・C15-9 / C24）。
+ * ⚠️ なめらかなグラデーションで塗ると**無い中間値があるように見える**ので、
+ *    ⭐ **段ごとのべた塗りを並べる**（JS の `bandedTrack()` が `--track` を作る）。
+ *
+ * ⚠️ トラックの高さをサムと同じにしてある。こうすると
+ *    「トラックを input の中で縦中央に置く」というブラウザ差の大きい調整が要らない。
+ */
+/*
+ * ⚠️⚠️ **溝は自前の `<span>` で描く。**
+ *
+ * `::-webkit-slider-runnable-track` に背景と枠を付けていたが、**左端に細い明るい線**が
+ * 出るのを消し切れなかった（背景の描画範囲・枠・角丸の合成がブラウザ任せで、
+ * 手元では再現条件を特定できない）。UA の疑似要素に頼るのをやめて、
+ * ⭐ **ただの要素 1 つに背景を敷き、その上に透明なスライダーを重ねる。**
+ * こうすれば塗るのは自分だけになり、端の描画で悩む余地が無くなる。
+ */
+.slider-wrap {
+    position: relative;
+    height: 32px;
+    margin: 6px 0; /* ⭐ 上下の余白で 44px の当たり判定を作る */
+
+    /*
+     * JS が `--track` を入れられなかったときの保険。
+     *
+     * ⚠️⚠️ **フォールバックは必ず「JS が書き込むのと同じ要素」に置く。**
+     *    `.slider-track` 側に書いたら、**要素自身の宣言が祖先からの継承に勝つ**ので、
+     *    包みに入れたインライン style（段組みの帯）が毎回捨てられて、
+     *    どのつまみもこの 2 色グラデーションになった。
+     *    同じ要素なら「インライン style > CSS 規則」で意図どおり上書きされる。
+     */
+    --track: linear-gradient(to right, var(--ramp-off), var(--ramp-main-hi));
+}
+
+.slider-track {
+    position: absolute;
+    inset: 0;
+    border-radius: 16px;
+    background: var(--track);
+    pointer-events: none;
+}
+
+.slider {
+    appearance: none;
+    -webkit-appearance: none;
+    position: absolute;
+    inset: 0;
+    display: block;
+    width: 100%;
+    height: 32px;
+    margin: 0;
+    padding: 0;
+    background: transparent;
+    cursor: pointer;
+}
+
+/*
+ * 使えないつまみ（消灯中の色温度など）。
+ *
+ * ⚠️ **全体を薄くするだけ（`opacity`）にしない。**暗い地の上では帯の色が濁って
+ *    「壊れている」ように見えた（電球色〜昼光色が泥色になる）。
+ * ⭐ 色をやめて**ただの溝**にする。「いま選ぶものが無い」が一目で分かる。
+ *    つまみは残す（今どの位置なのかは読ませたい）。値は見出しにも文字で出ている。
+ */
+.slider-wrap.is-disabled .slider-track {
+    background: var(--sunken);
+    box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.slider:disabled {
+    cursor: not-allowed;
+}
+
+.slider:disabled::-webkit-slider-thumb {
+    background: var(--line-strong);
+    border-color: transparent;
+    box-shadow: none;
+}
+
+.slider:disabled::-moz-range-thumb {
+    background: var(--line-strong);
+    border-color: transparent;
+    box-shadow: none;
+}
+
+/*
+ * ⭐⭐ 帯は **JS が段ごとのべた塗りで作る**（`lights.js` の `bandedTrack()`）。
+ *
+ * 器具は連続値を持たない（常夜灯 3 段 + 主灯 20 段・docs C15-9 / C24）ので、
+ * なめらかに塗ると**無い中間値があるように見える**。ここに書いてあるのは
+ * JS が `--track` を入れられなかったときの保険だけ。
+ */
+/* ⚠️ UA のトラックは**何も塗らない**。塗るのは上の `.slider-track` だけ */
+.slider::-webkit-slider-runnable-track {
+    height: 32px;
+    background: transparent;
+    border: 0;
+}
+
+.slider::-moz-range-track {
+    height: 32px;
+    background: transparent;
+    border: 0;
+}
+
+.slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: var(--thumb-size);
+    height: var(--thumb-size);
+    margin-top: 3px; /* (32 - 24 - 2) / 2 */
+    border-radius: 50%;
+    background: #ffffff;
+    border: 1px solid rgb(0 0 0 / 0.22);
+    box-shadow: 0 1px 3px rgb(0 0 0 / 0.4);
+}
+
+.slider::-moz-range-thumb {
+    width: var(--thumb-size);
+    height: var(--thumb-size);
+    border-radius: 50%;
+    background: #ffffff;
+    border: 1px solid rgb(0 0 0 / 0.22);
+    box-shadow: 0 1px 3px rgb(0 0 0 / 0.4);
+}
+
+/*
+ * つまみ 1 本ぶんの塊。
+ *
+ * ⭐ **見出し（名前と今の値）を上、つまみを下**にする。
+ * ⚠️ 値を下に置くと、それが**次のつまみの見出し**に見える
+ *    （明るさの下に出した値が「色温度」の直上に来てしまう）。
+ */
+.control + .control {
+    margin-top: 16px;
+}
+
+.control-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+    font-size: 13.5px;
+    color: var(--muted);
+    margin-bottom: 1px;
+}
+
+.control-head .value {
+    color: var(--fg);
+    font-size: 15px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+}
+
+/* ---------------------------------------------------------------- 照明 */
+
+.fixture .name {
+    font-size: 17px;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+}
+
+/*
+ * 点いているカードは縁を暖色にする。
+ * ⚠️ 灯りを示す小さな点は置かない。トグルが同じことを言うので、2 つあると
+ *    「どちらが本当の状態か」を探すことになる。
+ */
+.fixture.is-on {
+    border-color: var(--on-line);
+}
+
+.fixture.is-offline {
+    opacity: 0.72;
+}
+
+/*
+ * 操作の塊。⭐ 見出し（名前・状態）と線で切る。
+ * ⚠️ 地続きだと、名前・状態・つまみが 1 つのだんごに見えて読みどころが分からない。
+ */
+.controls {
+    margin-top: 12px;
+    padding-top: 14px;
+    border-top: 1px solid var(--line);
+}
+
+/* いつの状態か。⭐ 操作から離して、読み流してよい情報だと分かるようにする */
+.card-foot {
+    margin-top: 14px;
+    font-size: 12.5px;
+}
+
+/*
+ * 照明器具の名前の行。⭐ 入力欄の右にボタンを寄せる。
+ *
+ * ⚠️ 狭い画面ではボタン群が次の行へ折り返す。`margin-left: auto` を付けておくと
+ *    折り返した先でも右揃えのままになり、入力欄の下に左揃えで並んで紛れることがない。
+ */
+.name-row {
+    margin-top: 8px;
+}
+
+.name-row > input {
+    /* ⚠️ ここを切ると、ボタンと同じ行に居られる幅まで潰れて打てなくなる */
+    min-width: 160px;
+}
+
+.name-row .actions {
+    margin-left: auto;
+    flex-wrap: nowrap;
+}
+
+.all-card {
+    border-color: var(--accent-ink);
+}
+
+.all-card .name {
+    font-size: 17px;
+    font-weight: 700;
+}
+
+/* ---------------------------------------------------------------- 表 */
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13.5px;
+}
+
+th,
+td {
+    text-align: left;
+    padding: 7px 8px;
+    border-bottom: 1px solid var(--line);
+    vertical-align: top;
+}
+
+tr:last-child > th,
+tr:last-child > td {
+    border-bottom: 0;
+}
+
+th {
+    color: var(--muted);
+    font-weight: 500;
+    white-space: nowrap;
+}
+
+td {
+    font-variant-numeric: tabular-nums;
+}
+
+/* 横に長い表はカードの中でスクロールさせる（本文を横スクロールさせない） */
+.scroll-x {
+    overflow-x: auto;
+}
+
+/* 到達率などの横棒。⭐ 長さは JS が --bar で渡す */
+.bar {
+    height: 6px;
+    border-radius: 3px;
+    background: var(--line);
+    overflow: hidden;
+    min-width: 64px;
+    margin-bottom: 3px;
+}
+
+.bar > i {
+    display: block;
+    height: 100%;
+    width: var(--bar, 0%);
+    background: var(--accent-ink);
+    border-radius: 3px;
+}
+
+/* ⭐ 状態タブの先頭に置く要約。数字の羅列の前に「今どうなのか」を出す */
+.summary {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 10px;
+    margin: 0 0 12px;
+}
+
+.summary > div {
+    background: var(--sunken);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    padding: 10px 12px;
+}
+
+.summary dt {
+    font-size: 12px;
+    color: var(--muted);
+    margin: 0;
+}
+
+.summary dd {
+    margin: 2px 0 0;
+    font-size: 15px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.35;
+}
+
+/* ---------------------------------------------------------------- ログ */
+
+pre.log,
+pre.qr {
+    background: var(--sunken);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    padding: 12px;
+    overflow-x: auto;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 12px;
+    line-height: 1.45;
+    margin: 0;
+}
+
+pre.log {
+    max-height: 60vh;
+    overflow-y: auto;
+    white-space: pre;
+}
+
+/*
+ * ⚠️⚠️ 文字ブロックの QR は**黒地・白文字**で出す。
+ *
+ * matter.js の `QrCode.get()` は「塗られている = 明るいモジュール」で描く
+ * （端末で白文字・黒地に出す前提）。白地に黒文字で出すと**反転した QR** になり読めない。
+ * ⭐ 普段は `qrSvg()` が SVG で描くので、これは解釈に失敗したときの保険。
+ */
+pre.qr {
+    background: #000000;
+    color: #ffffff;
+    border-color: #000000;
+    line-height: 1;
+    font-size: 9px;
+    letter-spacing: 0;
+    text-align: center;
+}
+
+/* 登録用のコード。⭐ 読み取るものと打ち込むものなので中央に大きく置く */
+.pairing {
+    text-align: center;
+    margin: 14px 0 0;
+}
+
+.qr-svg {
+    display: block;
+    width: min(240px, 62vw);
+    height: auto;
+    margin: 0 auto 10px;
+    border-radius: 10px;
+    /* ⚠️ 暗いテーマでも白地固定。地が透けると余白が黒くなって読めない */
+    background: #ffffff;
+}
+
+.pairing-code {
+    margin: 0;
+    font-size: 15px;
+}
+
+.pairing-code strong {
+    font-size: 17px;
+    letter-spacing: 0.06em;
+    -webkit-user-select: all;
+    user-select: all;
+}
+
+/* ---------------------------------------------------------------- 通知 */
+
+#toast {
+    position: fixed;
+    left: 50%;
+    bottom: calc(20px + env(safe-area-inset-bottom));
+    transform: translateX(-50%);
+    max-width: min(92vw, 560px);
+    padding: 11px 16px;
+    border-radius: 12px;
+    background: var(--card);
+    border: 1px solid var(--line-strong);
+    box-shadow: 0 8px 30px -8px rgb(0 0 0 / 0.35);
+    z-index: 100;
+    font-size: 14.5px;
+    font-weight: 500;
+    animation: toast-in 160ms ease-out;
+}
+
+@keyframes toast-in {
+    from {
+        opacity: 0;
+        transform: translate(-50%, 8px);
+    }
+}
+
+#toast[hidden] {
+    display: none;
+}
+
+#toast.bad {
+    border-color: var(--bad);
+    background: var(--bad-soft);
+    color: var(--bad);
+}
+#toast.warn {
+    border-color: var(--warn);
+    background: var(--warn-soft);
+    color: var(--warn);
+}
+#toast.good {
+    border-color: var(--good);
+    background: var(--good-soft);
+    color: var(--good);
+}
+
+/*
+ * 注意書き。
+ *
+ * ⚠️ 絵文字も**左端の色帯**も使わない。あの装飾は意味を持たないのに視線を奪う。
+ * ⭐ 代わりに **見出しの色**（何が起きているか）と **面の色**（どれくらい困るか）で示す。
+ *    枠線は semantic 色を薄めたものにして、面から浮かないようにする。
+ */
+/*
+ * ⚠️ 上マージンを必ず持たせる。notice の直前に来るのは `.row`（ボタンの並び）や
+ *    セグメントのように**下マージンを持たない要素**が多く、0 だとボタンにくっつく。
+ * ⭐ 隣接マージンは相殺されるので、`p` のあとに置いても間隔は二重にならない。
+ */
+.notice {
+    padding: 10px 13px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    background: var(--sunken);
+    font-size: 13.5px;
+    line-height: 1.6;
+    margin: 14px 0 12px;
+}
+
+/*
+ * ⚠️ 先頭のときだけ 0 に戻す。マージンは親の padding を越えて相殺されないので、
+ *    カードの 16px padding の上にさらに 14px 乗って間延びする。
+ */
+.notice:first-child {
+    margin-top: 0;
+}
+
+/* 見出しの直後も同じ。h2 が既に 12px 空けている */
+.card > h2 + .notice {
+    margin-top: 0;
+}
+
+.notice > strong {
+    display: block;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+    margin-bottom: 1px;
+}
+
+.notice.warn {
+    background: var(--warn-soft);
+    border-color: var(--warn-line);
+}
+.notice.warn > strong {
+    color: var(--warn);
+}
+
+.notice.bad {
+    background: var(--bad-soft);
+    border-color: var(--bad-line);
+}
+.notice.bad > strong {
+    color: var(--bad);
+}
+
+.notice.good {
+    background: var(--good-soft);
+    border-color: var(--good-line);
+}
+.notice.good > strong {
+    color: var(--good);
+}
+
+/* Pi で打ってもらうコマンド。⭐ タップで全選択できるとコピーしやすい */
+.cmd {
+    display: block;
+    margin: 6px 0;
+    padding: 8px 10px;
+    background: var(--sunken);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 12px;
+    line-height: 1.5;
+    white-space: pre;
+    overflow-x: auto;
+    -webkit-user-select: all;
+    user-select: all;
+}
+
+/* 読み込み中。⭐ 派手にしない（すぐ差し替わるので） */
+.loading {
+    color: var(--muted);
+    font-size: 13.5px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.loading::before {
+    content: "";
+    width: 13px;
+    height: 13px;
+    border-radius: 50%;
+    border: 2px solid var(--line-strong);
+    border-top-color: var(--accent-ink);
+    animation: spin 700ms linear infinite;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+}
+
+/* ---------------------------------------------------------------- ログイン */
+
+body.login {
+    display: grid;
+    place-items: center;
+    min-height: 100dvh;
+    padding: 24px 16px;
+}
+
+.login-box {
+    width: min(92vw, 380px);
+}
+
+.login-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 14px;
+}
+
+.login-head .mark {
+    width: 34px;
+    height: 34px;
+}
+
+.login-box h1 {
+    font-size: 17px;
+    font-weight: 700;
+    margin: 0;
+    line-height: 1.3;
+}
+
+.login-box h1 .sub {
+    display: block;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--muted);
+}
+
+.login-box .card {
+    margin-bottom: 12px;
+}
+
+.login-box details.card {
+    box-shadow: none;
+    background: transparent;
+}
+
+.login-box summary {
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 600;
+    min-height: 24px;
+}
+
+.login-box details[open] summary {
+    margin-bottom: 10px;
+}
+
+.login-box button[type="submit"] {
+    width: 100%;
+}

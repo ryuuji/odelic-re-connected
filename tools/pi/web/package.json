@@ -1,21 +1,20 @@
 {
-  "name": "odelic-matter",
+  "name": "odelic-web",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "ODELIC CONNECTED LIGHTING を Matter ブリッジとして公開する。odelicd の HTTP API を Matter に写すだけで、BLE は一切触らない",
+  "description": "ODELIC 照明の設定ページとスマートフォン UI。odelicd を直接呼んで照明を操作し、器具名と Matter の状態はブリッジの管理 API 経由で扱う",
   "license": "MIT",
   "engines": {
     "node": ">=20.0.0"
   },
   "scripts": {
     "build": "tsc",
-    "test": "npm run clean && tsc && cd dist && node --test --test-concurrency=1",
+    "test": "npm run clean && tsc && cd dist && node --test",
     "start": "node dist/src/main.js",
     "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\""
   },
   "dependencies": {
-    "@matter/main": "^0.17.6",
     "@odelic/common": "file:../common"
   },
   "devDependencies": {

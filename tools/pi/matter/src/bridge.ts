@@ -22,8 +22,13 @@
  * `Move` / `Step` の意味論まで自前で持つことになる。まずは上の 2 つで運用する。
  */
 
+import { readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+
 import { Endpoint, ServerNode, VendorId } from "@matter/main";
+import { DeviceCommissioner } from "@matter/protocol";
 import { AggregatorEndpoint } from "@matter/main/endpoints/aggregator";
+import { QrCode } from "@matter/types/schema";
 
 import { capabilityOf } from "@odelic/common";
 import {
@@ -35,7 +40,16 @@ import {
 } from "./config.js";
 import { Fixture, type PendingCommand, describeCommand, sameCommand } from "./fixture.js";
 import { type CommandOutcome, OdelicClient, type OdelicInfo, type OdelicTarget } from "./odelicd.js";
-import { type Roster, loadRoster, rosterPath, saveRoster, upsert } from "./roster.js";
+import {
+    type Roster,
+    displayNameOf,
+    loadRoster,
+    remove as removeFromRoster,
+    rosterPath,
+    saveRoster,
+    setDisplayName,
+    upsert,
+} from "./roster.js";
 
 /** Matter の BasicInformation に出す識別子。⚠️ serialNumber と uniqueId は別の値にする。 */
 const BRIDGE_SERIAL = "odelic-matter-bridge";
@@ -131,6 +145,25 @@ export class Bridge {
      */
     private roster: Roster = { version: 1, fixtures: [] };
     private readonly rosterFile: string;
+    /**
+     * commissioning が完了した時刻（ms）。
+     *
+     * ⚠️⚠️ **直後にブリッジを再起動すると Nest ハブが配下の器具を失う**（docs/07 M6-6）。
+     * 設定ページからの再起動要求をここで弾く。
+     */
+    private commissionedAt: number | null = null;
+    /**
+     * 追加登録の受付が閉じる時刻（ms）。設定ページに残り時間を出すために覚えている。
+     *
+     * ⚠️ **自分で開けたときしか分からない。**ブリッジを再起動したり、他の経路で
+     * 開かれたりすると `null` のまま（そのときは残り時間を出さず「受付中」とだけ言う）。
+     */
+    private commissioningWindowUntil: number | null = null;
+    /** ⚠️ 期限を自分で切るためのタイマー。`allowBasicCommissioning()` は勝手に閉じない */
+    private commissioningWindowTimer: ReturnType<typeof setTimeout> | null = null;
+    /** 設定ページからの再起動要求を受けたときに呼ぶ。既定は `process.exit(0)`（systemd が上げ直す） */
+    onRestartRequest: (() => void) | undefined;
+    private startedAt = Date.now();
 
     constructor(opts: BridgeOptions) {
         this.cfg = opts.config;
@@ -186,7 +219,10 @@ export class Bridge {
         this.reportCommissioning();
 
         this.server.events.commissioning.commissioned.on(() => {
+            // ⚠️ ここから 10 分は設定ページからの再起動を断る（M6-6）
+            this.commissionedAt = Date.now();
             this.log("★ commissioning 完了。Google Home から操作できます");
+            this.log("  ⚠️ しばらくブリッジを再起動しないでください（Nest ハブが器具を失います）");
         });
         this.server.events.commissioning.decommissioned.on(() => {
             this.log("[!] decommission されました。再度 commissioning が必要です");
@@ -227,7 +263,7 @@ export class Bridge {
             if (!cap.isLight) continue;
             // ⚠️ server.start() 前なので endpoint.set() は使えない。
             //    Reachable はコンストラクタで false にする
-            const fixture = await this.createFixture(entry.mac, override.name, cap, entry.product, entry.version, false);
+            const fixture = await this.createFixture(entry.mac, this.nameFor(entry.mac), cap, entry.product, entry.version, false);
             this.log(`◇ 名簿から復元: ${fixture.describe()}（まだ odelicd から見えていません）`);
         }
     }
@@ -428,9 +464,11 @@ export class Bridge {
 
             let fixture = this.fixtures.get(mac);
             if (fixture === undefined) {
-                fixture = await this.createFixture(mac, override.name, cap, device.product, device.version);
+                fixture = await this.createFixture(mac, this.nameFor(mac), cap, device.product, device.version);
                 this.log(`＋ Matter に追加: ${fixture.describe()} — ${cap.reason}`);
             }
+            fixture.groupId = device.group_id;
+            fixture.lastSeen = device.last_seen;
 
             // ⭐ 名簿に記録する。次回の起動でエンドポイントを復元できるようにする
             if (upsert(this.roster, {
@@ -624,4 +662,393 @@ export class Bridge {
     fixtureOf(mac: string): Fixture | undefined {
         return this.fixtures.get(normalizeMac(mac));
     }
+
+    // ------------------------------------------------------------ 管理 API
+    //
+    // ⚠️ 呼び出し元は `admin.ts`（127.0.0.1 限定）だけ。認証は `odelic-web` 側で済ませてある。
+
+    /**
+     * 表示名の決まり方。
+     *
+     * ⭐ `displayName`（設定ページ） > `config.json` の `name` > MAC からの既定名
+     *
+     * ⚠️ 一度でも設定ページで名前を付けると `config.json` の `name` は効かなくなる
+     * （名簿のほうが「後から人が決めた値」なので優先する）。
+     */
+    private nameFor(mac: string): string | undefined {
+        const key = normalizeMac(mac);
+        const fromRoster = displayNameOf(this.roster, key);
+        const fromConfig = this.cfg.fixtures[key]?.name;
+        if (fromRoster !== undefined && fromConfig !== undefined && fromRoster !== fromConfig) {
+            this.log(`器具 ${key} の名前は設定ページの「${fromRoster}」を使います（config.json の「${fromConfig}」より優先）`);
+        }
+        return fromRoster ?? fromConfig;
+    }
+
+    /** 設定ページに出す全体像。 */
+    adminState(): AdminState {
+        return {
+            version: BRIDGE_VERSION,
+            uptimeSec: Math.round((Date.now() - this.startedAt) / 1000),
+            odelicdReachable: !this.odelicdDown && this.lastInfo !== null,
+            fixtures: [...this.fixtures.values()].map(f => ({
+                mac: f.mac,
+                name: f.name,
+                named: displayNameOf(this.roster, f.mac) !== undefined || this.cfg.fixtures[f.mac]?.name !== undefined,
+                product: this.roster.fixtures.find(r => r.mac === f.mac)?.product ?? "不明",
+                productCode: f.capability.isLight ? (this.roster.fixtures.find(r => r.mac === f.mac)?.productCode ?? null) : null,
+                version: this.roster.fixtures.find(r => r.mac === f.mac)?.version ?? "",
+                nightLight: f.capability.nightLight,
+                deviceType: f.capability.kind,
+                reason: f.capability.reason,
+                reachable: f.isReachable,
+                // ⚠️ 名簿にはあるが odelicd から見えていない（壁スイッチで消えている等）
+                inRosterOnly: !(this.lastInfo?.devices ?? []).some(d => normalizeMac(d.mac) === f.mac),
+                endpointId: f.endpointId,
+            })),
+            commissioning: this.commissioningInfo(),
+        };
+    }
+
+    /** Matter への参加状況。⚠️ QR は matter.js が持っている文字ブロックをそのまま返す。 */
+    commissioningInfo(): AdminCommissioning {
+        const c = this.server.state.commissioning;
+        const fabrics = Object.values(c.fabrics ?? {}).map(f => ({
+            index: Number(f.fabricIndex),
+            label: f.label,
+            vendorId: Number(f.rootVendorId),
+        }));
+        const windowOpen = this.commissioningWindowOpen();
+        // ⭐ 閉じたら残り時間を忘れる（ペアリングが成立すると窓は勝手に閉じる）
+        if (!windowOpen) this.commissioningWindowUntil = null;
+        /*
+         * ⭐ **commissioning 済みでも、追加登録の受付中はコードを出す。**
+         *    相手のアプリ（Apple Home / Alexa）に QR か手入力コードを渡す必要があり、
+         *    Basic Commissioning Window は**同じ passcode** を使うので元のコードがそのまま効く。
+         * ⚠️ 受付していないときは出さない。今は使えないコードを見せても混乱するだけで、
+         *    画面を覗かれたときに渡すものを増やすだけ損。
+         */
+        const codes = !c.commissioned || windowOpen ? c.pairingCodes : null;
+        return {
+            commissioned: c.commissioned,
+            manualPairingCode: codes?.manualPairingCode ?? null,
+            qrPairingCode: codes?.qrPairingCode ?? null,
+            // ⭐ QR エンコーダを新たに入れない。matter.js の QrCode がそのまま使える
+            qrText: codes === undefined || codes === null ? null : QrCode.get(codes.qrPairingCode),
+            fabrics,
+            windowOpen,
+            // ⚠️ 自分で開けたときしか分からない（ブリッジ再起動後や他から開かれたときは null）
+            windowRemainingSec:
+                windowOpen && this.commissioningWindowUntil !== null
+                    ? Math.max(0, Math.round((this.commissioningWindowUntil - Date.now()) / 1000))
+                    : null,
+            commissionedAt: this.commissionedAt === null ? null : new Date(this.commissionedAt).toISOString(),
+        };
+    }
+
+    private commissioningWindowOpen(): boolean {
+        // ⭐ 自分で開けたぶん。⚠️ こちらはクラスタの属性に出ない（下の openCommissioning 参照）
+        if (this.commissioningWindowUntil !== null && Date.now() < this.commissioningWindowUntil) return true;
+        try {
+            // 他の管理者が Matter 経由で開けたぶんはここに出る。0 = WindowNotOpen
+            const status = (this.server.state as { administratorCommissioning?: { windowStatus?: number } })
+                .administratorCommissioning?.windowStatus;
+            return status !== undefined && status !== 0;
+        } catch {
+            return false;
+        }
+    }
+
+    /**
+     * 追加フェアリング（multi-admin）の窓を開く。
+     *
+     * ⭐ Apple Home や Alexa を足すときに使う。既定の passcode を使う
+     * 「Basic Commissioning Window」なので、表示している手入力コードがそのまま使える。
+     */
+    async openCommissioning(seconds: number): Promise<void> {
+        if (this.commissioningWindowOpen()) throw new Error("すでに追加の登録を受け付けています");
+        // ⭐⭐ `DeviceCommissioner` を直接使う。
+        //
+        // ⚠️⚠️ **`AdministratorCommissioningServer.openBasicCommissioningWindow()` は使えない。**
+        //    あれは Matter のコマンドハンドラで、中で `assertRemoteActor()` を通すので
+        //    ローカル（この管理 API）から呼ぶと
+        //    "This operation requires an authenticated remote session" で落ちる。
+        //    しかも**タイマーを起動したあとに落ちる**ので、内部だけ「開いている」状態が残り、
+        //    2 回目に "A commissioning window is already opened" が出る（実機で踏んだ）。
+        //
+        // ⚠️ 代わりにこちらを使うと `AdministratorCommissioning` の `windowStatus` 属性は
+        //    更新されない（他の管理者からは「開いている」と見えない）。
+        //    ペアリング自体（PASE の受付）は動くので、この用途では問題にしない。
+        const commissioner = this.server.env.get(DeviceCommissioner);
+        await commissioner.allowBasicCommissioning(() => {
+            // ペアリングが成立した／終わったときに呼ばれる
+            this.clearCommissioningWindow();
+            this.log("追加登録が終わりました（受付を閉じます）");
+        });
+        this.commissioningWindowUntil = Date.now() + seconds * 1000;
+        // ⚠️⚠️ **期限は自分で切る。**`allowBasicCommissioning()` にタイムアウトは無いので、
+        //    これを忘れると受付が開きっぱなしになる（誰でも登録できる状態が続く）
+        this.commissioningWindowTimer = setTimeout(() => {
+            this.log("追加登録の受付が時間切れになりました");
+            void this.closeCommissioning().catch(e => this.log(`[!] 受付を閉じられません: ${String(e)}`));
+        }, seconds * 1000);
+        this.commissioningWindowTimer.unref?.();
+        this.log(`追加登録の受付を開きました（${seconds} 秒・multi-admin）`);
+    }
+
+    /** 追加登録の受付をやめる。⭐ 開いていなくても安全に呼べる。 */
+    async closeCommissioning(): Promise<void> {
+        this.clearCommissioningWindow();
+        await this.server.env.get(DeviceCommissioner).endCommissioning();
+        this.log("追加登録の受付を終了しました");
+    }
+
+    private clearCommissioningWindow(): void {
+        if (this.commissioningWindowTimer !== null) {
+            clearTimeout(this.commissioningWindowTimer);
+            this.commissioningWindowTimer = null;
+        }
+        this.commissioningWindowUntil = null;
+    }
+
+    /** 器具名を変える。⭐ 再起動は不要。⚠️ Google Home 側の名前は変わらない（M6）。 */
+    async renameFixture(mac: string, name: string): Promise<{ ok: boolean; detail: string }> {
+        const key = normalizeMac(mac);
+        const trimmed = name.trim();
+        if (trimmed === "") return { ok: false, detail: "名前が空です" };
+        if (setDisplayName(this.roster, key, trimmed, new Date())) {
+            saveRoster(this.rosterFile, this.roster, msg => this.log(`[!] ${msg}`));
+        }
+        const fixture = this.fixtures.get(key);
+        // ⚠️ まだエンドポイントが無い器具（見えたことがない）にも名前は付けられる。
+        //    次に現れたときに反映される
+        if (fixture !== undefined) await fixture.setName(trimmed);
+        return { ok: true, detail: fixture === undefined ? "保存しました（この器具はまだ見えていません）" : "変更しました" };
+    }
+
+    /**
+     * 器具を名簿から外す。
+     *
+     * ⚠️⚠️ **破壊的。**`endpoint.delete()` は永続データを消すので `uniqueId` が変わり、
+     * Google Home からは**別デバイス**になって部屋割り・名前・自動化が失われる。
+     * 器具を本当に撤去したときだけ使う。
+     */
+    async removeFixture(mac: string): Promise<{ ok: boolean; detail: string }> {
+        const key = normalizeMac(mac);
+        const fixture = this.fixtures.get(key);
+        const inRoster = removeFromRoster(this.roster, key);
+        if (inRoster) saveRoster(this.rosterFile, this.roster, msg => this.log(`[!] ${msg}`));
+        if (fixture !== undefined) {
+            await fixture.endpoint.delete();
+            this.fixtures.delete(key);
+            this.lastPresent.delete(key);
+        }
+        if (!inRoster && fixture === undefined) return { ok: false, detail: "その器具は名簿にありません" };
+        this.log(`− 器具を撤去: ${key}（⚠️ Google Home からは別デバイス扱いになります）`);
+        return { ok: true, detail: "撤去しました。Google Home 側でも削除してください" };
+    }
+
+    /** 設定ページに出す設定（公開してよいものだけ）。 */
+    adminSettings(): AdminSettings {
+        return {
+            nightBandPercent: this.cfg.nightBandPercent,
+            colorTempMinKelvin: this.cfg.colorTempMinKelvin,
+            colorTempMaxKelvin: this.cfg.colorTempMaxKelvin,
+            colorTempInverted: this.cfg.colorTempInverted,
+            statusRefreshSec: this.cfg.statusRefreshSec,
+            waitMs: this.cfg.waitMs,
+            debounceMs: this.cfg.debounceMs,
+            coalesceAll: this.cfg.coalesceAll,
+        };
+    }
+
+    /**
+     * 設定を更新する。
+     *
+     * ⚠️ **反映に再起動が要る項目がある。**明るさの段や色温度の換算は
+     * エンドポイント生成時に焼き込まれるので、変えても既存のエンドポイントには効かない。
+     * どれが再起動待ちかを返して UI に出す（黙って効かないのが一番困る）。
+     */
+    updateSettings(patch: Partial<AdminSettings>): { ok: boolean; detail: string; needsRestart: string[] } {
+        const needsRestart: string[] = [];
+        /** ⚠️ エンドポイント生成時に焼き込まれる項目 */
+        const RESTART_KEYS = new Set(["nightBandPercent", "colorTempMinKelvin", "colorTempMaxKelvin", "colorTempInverted"]);
+
+        for (const [key, value] of Object.entries(patch)) {
+            if (value === undefined) continue;
+            const k = key as keyof AdminSettings;
+            if (this.cfg[k] === value) continue;
+            (this.cfg as unknown as Record<string, unknown>)[k] = value;
+            if (RESTART_KEYS.has(key)) needsRestart.push(key);
+        }
+
+        // ⭐ 定期の状態要求だけは即座に効かせられる
+        if (patch.statusRefreshSec !== undefined) this.rescheduleStatusRefresh();
+
+        const saved = this.saveSettings();
+        return {
+            ok: saved.ok,
+            detail: saved.ok
+                ? needsRestart.length === 0
+                    ? "保存しました"
+                    : `保存しました（${needsRestart.join(" / ")} はブリッジの再起動で反映されます）`
+                : saved.detail,
+            needsRestart,
+        };
+    }
+
+    /**
+     * 変更した設定を保存する。
+     *
+     * ⚠️ `config.json` はコメント付きで配っている（書き戻すとコメントが消える）ので、
+     * ⭐ **設定ページからの変更は名簿と同じ場所（`<storagePath>/settings.json`）に置く。**
+     * 起動時に `config.json` の上へ重ねる。
+     */
+    private saveSettings(): { ok: boolean; detail: string } {
+        try {
+            writeFileSync(
+                settingsPath(this.cfg.matter.storagePath),
+                `${JSON.stringify(this.adminSettings(), null, 2)}\n`,
+                "utf8",
+            );
+            return { ok: true, detail: "" };
+        } catch (e) {
+            const detail = `設定を保存できません: ${e instanceof Error ? e.message : String(e)}`;
+            this.log(`[!] ${detail}`);
+            return { ok: false, detail };
+        }
+    }
+
+    private rescheduleStatusRefresh(): void {
+        if (this.statusTimer !== undefined) clearInterval(this.statusTimer);
+        this.statusTimer = undefined;
+        if (this.cfg.statusRefreshSec > 0) {
+            this.statusTimer = setInterval(() => void this.client.requestStatus(), this.cfg.statusRefreshSec * 1000);
+            this.log(`定期の状態要求を ${this.cfg.statusRefreshSec} 秒間隔にしました`);
+        } else {
+            this.log("定期の状態要求を止めました（壁スイッチの変更は追従しません）");
+        }
+    }
+
+    /**
+     * 設定ページからの再起動。
+     *
+     * ⚠️⚠️ **commissioning 直後は断る。**Nest ハブが配下の器具を失う既知の不具合を踏む
+     * （docs/07 M6-6・実機で確認済み）。落ち着いてからなら問題なく復帰する。
+     */
+    requestRestart(): { ok: boolean; detail: string } {
+        if (this.commissionedAt !== null) {
+            const elapsed = Date.now() - this.commissionedAt;
+            if (elapsed < RESTART_BLOCK_AFTER_COMMISSION_MS) {
+                const wait = Math.ceil((RESTART_BLOCK_AFTER_COMMISSION_MS - elapsed) / 60_000);
+                return {
+                    ok: false,
+                    detail:
+                        `commissioning の直後です。あと約 ${wait} 分お待ちください` +
+                        "（今再起動すると Nest ハブが配下の器具を見失います）",
+                };
+            }
+        }
+        this.log("設定ページから再起動を要求されました。終了します（systemd が起動し直します）");
+        const restart = this.onRestartRequest ?? (() => process.exit(0));
+        // ⚠️ 応答を返してから落ちる。同期で exit すると UI が「届かなかった」と誤解する
+        setTimeout(restart, 250);
+        return { ok: true, detail: "再起動します（数秒で戻ります）" };
+    }
+
+    /**
+     * ⚠️⚠️ フェアリング情報を消して未 commissioning に戻す。**取り返しがつかない。**
+     *
+     * Google Home / Apple Home 側からもデバイスを削除する必要がある。
+     */
+    async factoryReset(): Promise<{ ok: boolean; detail: string }> {
+        this.log("[!] フェアリング情報の破棄を要求されました");
+        await this.server.erase();
+        this.commissionedAt = null;
+        this.log("[!] 破棄しました。再度 commissioning が必要です");
+        return { ok: true, detail: "破棄しました。Google Home 側でもデバイスを削除してください" };
+    }
+}
+
+/** ⚠️ commissioning 後この時間は再起動を断る（docs/07 M6-6）。 */
+const RESTART_BLOCK_AFTER_COMMISSION_MS = 10 * 60_000;
+
+/** 設定ページからの設定変更の保存先。⚠️ config.json のコメントを守るため別ファイルにする。 */
+export function settingsPath(storagePath: string): string {
+    return join(storagePath, "settings.json");
+}
+
+/**
+ * 設定ページで保存した設定を `config.json` の上に重ねる。
+ *
+ * ⚠️ 無ければ何もしない（初回起動）。壊れていても起動は止めない。
+ */
+export function applySavedSettings(cfg: Config, warn: (msg: string) => void = () => {}): string[] {
+    const path = settingsPath(cfg.matter.storagePath);
+    let raw: unknown;
+    try {
+        raw = JSON.parse(readFileSync(path, "utf8"));
+    } catch (e) {
+        if ((e as NodeJS.ErrnoException).code !== "ENOENT") {
+            warn(`設定ページの保存内容を読めません（config.json だけで動きます）: ${path}`);
+        }
+        return [];
+    }
+    if (typeof raw !== "object" || raw === null) return [];
+    const applied: string[] = [];
+    for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+        if (!(key in cfg)) continue;
+        const current = (cfg as unknown as Record<string, unknown>)[key];
+        if (typeof current !== typeof value) continue;
+        if (current === value) continue;
+        (cfg as unknown as Record<string, unknown>)[key] = value;
+        applied.push(`${key}=${String(value)}`);
+    }
+    return applied;
+}
+
+export interface AdminFixture {
+    mac: string;
+    name: string;
+    named: boolean;
+    product: string;
+    productCode: number | null;
+    version: string;
+    nightLight: boolean;
+    deviceType: string;
+    reason: string;
+    reachable: boolean;
+    inRosterOnly: boolean;
+    endpointId: string;
+}
+
+export interface AdminCommissioning {
+    commissioned: boolean;
+    manualPairingCode: string | null;
+    qrPairingCode: string | null;
+    qrText: string | null;
+    fabrics: Array<{ index: number; label: string; vendorId: number }>;
+    windowOpen: boolean;
+    /** 受付が閉じるまでの秒数。⚠️ 分からないことがある（`null`） */
+    windowRemainingSec: number | null;
+    commissionedAt: string | null;
+}
+
+export interface AdminState {
+    version: string;
+    uptimeSec: number;
+    odelicdReachable: boolean;
+    fixtures: AdminFixture[];
+    commissioning: AdminCommissioning;
+}
+
+export interface AdminSettings {
+    nightBandPercent: number;
+    colorTempMinKelvin: number;
+    colorTempMaxKelvin: number;
+    colorTempInverted: boolean;
+    statusRefreshSec: number;
+    waitMs: number;
+    debounceMs: number;
+    coalesceAll: boolean;
 }

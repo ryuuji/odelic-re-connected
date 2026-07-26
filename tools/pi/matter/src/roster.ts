@@ -35,6 +35,26 @@ export interface RosterEntry {
     version: string;
     /** 最後に `odelicd` から見えた時刻（ISO8601）。診断用 */
     lastSeen: string;
+    /**
+     * ⭐ 設定ページで付けた表示名。
+     *
+     * ## なぜ config.json ではなくここなのか
+     *
+     * `config.json` はコメント付きで配布しており（`config.example.json` が雛形）、
+     * ⚠️ **プログラムから書き戻すとコメントが全部消える。**設定の意味を説明した
+     * コメントは、後から読む人にとっての一次情報なので失いたくない。
+     *
+     * → 名簿は元々ブリッジだけが書くファイルなので、ここに置く。
+     *   バックアップ（`/var/lib/odelic-matter`）にも既に含まれている。
+     *
+     * ## 優先順位
+     *
+     * `displayName`（設定ページ） > `config.json` の `fixtures[mac].name` > MAC からの既定名
+     *
+     * ⚠️ 一度でも設定ページで名前を付けると `config.json` の `name` は効かなくなる。
+     * 起動時のログでどちらを使ったかを出している。
+     */
+    displayName?: string;
 }
 
 export interface Roster {
@@ -74,6 +94,9 @@ export function loadRoster(path: string, warn: (msg: string) => void = () => {})
                 productCode: typeof e.productCode === "number" ? e.productCode : null,
                 version: typeof e.version === "string" ? e.version : "",
                 lastSeen: typeof e.lastSeen === "string" ? e.lastSeen : "",
+                ...(typeof e.displayName === "string" && e.displayName !== ""
+                    ? { displayName: e.displayName }
+                    : {}),
             });
         }
         return { version: 1, fixtures: out };
@@ -107,8 +130,9 @@ export function saveRoster(path: string, roster: Roster, warn: (msg: string) => 
  * 名簿に 1 件を反映する。変わっていなければ `false` を返す（無駄な書き込みを避ける）。
  *
  * `lastSeen` は比較に含めない。含めるとポーリングごとに書き込みが走る。
+ * ⚠️ `displayName` はここでは触らない（設定ページだけが `setDisplayName` で書く）。
  */
-export function upsert(roster: Roster, entry: Omit<RosterEntry, "lastSeen">, now: Date): boolean {
+export function upsert(roster: Roster, entry: Omit<RosterEntry, "lastSeen" | "displayName">, now: Date): boolean {
     const mac = normalizeMac(entry.mac);
     const found = roster.fixtures.find(f => f.mac === mac);
     const stamp = now.toISOString();
@@ -126,6 +150,42 @@ export function upsert(roster: Roster, entry: Omit<RosterEntry, "lastSeen">, now
     found.version = entry.version;
     found.lastSeen = stamp;
     return changed;
+}
+
+/**
+ * 設定ページからの表示名を記録する。
+ *
+ * ⚠️ 器具がまだ名簿に無いこともある（見えたことがない器具の名前を先に付ける場合）。
+ * その場合は最小限の行を作る。
+ *
+ * @returns 変わったか（変わっていなければ保存しない）
+ */
+export function setDisplayName(roster: Roster, mac: string, name: string, now: Date): boolean {
+    const key = normalizeMac(mac);
+    const trimmed = name.trim();
+    const found = roster.fixtures.find(f => f.mac === key);
+    if (found === undefined) {
+        roster.fixtures.push({
+            mac: key,
+            product: "不明",
+            productCode: null,
+            version: "",
+            lastSeen: now.toISOString(),
+            displayName: trimmed,
+        });
+        roster.fixtures.sort((a, b) => a.mac.localeCompare(b.mac));
+        return true;
+    }
+    if (found.displayName === trimmed) return false;
+    found.displayName = trimmed;
+    return true;
+}
+
+/** 名簿にある表示名（設定ページで付けたもの）。無ければ `undefined`。 */
+export function displayNameOf(roster: Roster, mac: string): string | undefined {
+    const key = normalizeMac(mac);
+    const found = roster.fixtures.find(f => f.mac === key);
+    return found?.displayName !== undefined && found.displayName !== "" ? found.displayName : undefined;
 }
 
 /** 名簿から 1 件を消す。器具を本当に外したときだけ使う。 */

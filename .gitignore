@@ -30,12 +30,15 @@ __pycache__/
 .venv/
 venv/
 
-# --- Node.js（Matter ブリッジ: tools/pi/matter） ---
+# --- Node.js（tools/pi/common・matter・web） ---
 node_modules/
 dist/
 npm-debug.log*
 # 実際の設定にはローカル固有の器具名などが入るので入れない（config.example.json は入れる）
 /tools/pi/matter/config.json
+/tools/pi/web/config.json
+# ⚠️ 証明書と鍵は Pi 上で生成する。リポジトリには絶対に入れない
+/tools/pi/web/tls/
 
 # --- JetBrains / エディタ ---
 .idea/

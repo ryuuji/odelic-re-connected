@@ -22,7 +22,6 @@ import {
     loadConfig,
     macToEndpointId,
     normalizeMac,
-    stripJsonComments,
 } from "../src/config.js";
 
 // dist/test/ から見たリポジトリ内の位置
@@ -59,40 +58,19 @@ describe("config.example.json", () => {
     });
 });
 
-describe("stripJsonComments", () => {
-    it("行コメントとブロックコメントを落とす", () => {
-        assert.equal(JSON.parse(stripJsonComments('{"a":1 /* x */, "b":2 // y\n}')).b, 2);
-    });
-
-    it("⚠️ 文字列の中の // は消さない", () => {
-        const parsed = JSON.parse(stripJsonComments('{"url":"http://127.0.0.1:8080"}')) as { url: string };
-        assert.equal(parsed.url, "http://127.0.0.1:8080");
-    });
-
-    it("エスケープされた引用符に惑わされない", () => {
-        const parsed = JSON.parse(stripJsonComments('{"a":"x\\"// y"}')) as { a: string };
-        assert.equal(parsed.a, 'x"// y');
-    });
-});
-
 describe("MAC の扱い", () => {
-    it("区切りの揺れを吸収する", () => {
-        for (const s of ["ec:c5:7f:81:de:cd", "EC-C5-7F-81-DE-CD", "ecc57f81decd"]) {
-            assert.equal(normalizeMac(s), "EC:C5:7F:81:DE:CD", s);
-        }
-    });
-
-    it("未取得の MAC を判定する", () => {
-        assert.equal(isUnknownMac("00:00:00:00:00:00"), true);
-        assert.equal(isUnknownMac("EC:C5:7F:81:DE:CD"), false);
-    });
+    // ⭐ 正規化そのもののテストは `@odelic/common` の mac.test.ts に移した
+    //    （`odelic-web` と共有するため）。ここでは Matter 固有の部分と
+    //    **re-export が生きていること**だけを確認する
 
     it("⭐ エンドポイント id は MAC から決まる（再起動しても変わらない）", () => {
         assert.equal(macToEndpointId("EC:C5:7F:81:DE:CD"), "odelic-ecc57f81decd");
         assert.equal(macToEndpointId("ec-c5-7f-81-de-cd"), macToEndpointId("EC:C5:7F:81:DE:CD"));
     });
 
-    it("名前が無い器具にも既定名が付く（設定漏れで器具が消えないため）", () => {
+    it("common からの re-export が生きている（呼び出し側を壊していない）", () => {
+        assert.equal(normalizeMac("ec-c5-7f-81-de-cd"), "EC:C5:7F:81:DE:CD");
+        assert.equal(isUnknownMac("00:00:00:00:00:00"), true);
         assert.equal(defaultFixtureName("EC:C5:7F:81:DE:CD"), "ODELIC 81DECD");
     });
 });
