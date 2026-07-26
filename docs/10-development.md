@@ -1,21 +1,21 @@
 # 10. 開発の手引き — ビルド順序・テスト・配備
 
 照明のそばに常設した Raspberry Pi 3（`odelic-re-connected`）で動く 4 つ。
-⭐ **ビルドとテストは開発機（Windows / macOS / Linux）で完結する。BLE も Pi も要らない。**
+⭐ ビルドとテストは開発機（Windows / macOS / Linux）で完結する。BLE も Pi も要らない。
 
 | ディレクトリ | 中身 | 状態 |
 | --- | --- | --- |
-| [`odelicd/`](../odelicd) | ⭐ **`odelicd`** — BLE で照明を制御する常駐デーモン（Python） | ✅ 運用中 |
-| [`common/`](../common) | ⭐ **`@odelic/common`** — matter と web が共有する「プロトコル由来の事実」 | ✅ 完成 |
-| [`matter/`](../matter) | ⭐ **`odelic-matter`** — Matter ブリッジ（Google Home 等から操作） | ✅ 運用中 |
-| [`web/`](../web) | ⭐ **`odelic-web`** — 設定ページとスマホ UI（HTTPS + パスワード） | ✅ 完成 |
+| [`odelicd/`](../odelicd) | ⭐ `odelicd` — BLE で照明を制御する常駐デーモン（Python） | ✅ 運用中 |
+| [`common/`](../common) | ⭐ `@odelic/common` — matter と web が共有する「プロトコル由来の事実」 | ✅ 完成 |
+| [`matter/`](../matter) | ⭐ `odelic-matter` — Matter ブリッジ（Google Home 等から操作） | ✅ 運用中 |
+| [`web/`](../web) | ⭐ `odelic-web` — 設定ページとスマホ UI（HTTPS + パスワード） | ✅ 完成 |
 
 ---
 
 ## ⚠️ ビルドの順序（ここを間違えると詰まる）
 
 `matter` と `web` は `@odelic/common` を **`file:../common`** で参照する。
-npm はこれをシンボリックリンクにするので、**`common` の `dist` が無いとビルドできない。**
+npm はこれをシンボリックリンクにするので、`common` の `dist` が無いとビルドできない。
 
 ```bash
 # ⭐ 必ず common を先にビルドする
@@ -25,7 +25,7 @@ cd ../matter && npm install && npm test
 cd ../web    && npm install && npm test
 ```
 
-⚠️ **`common` の `clean` は `dist` を消さない**（`dist-test` だけ）。
+⚠️ `common` の `clean` は `dist` を消さない（`dist-test` だけ）。
 `dist` は matter / web が参照する成果物なので、消すと
 `Cannot find module '@odelic/common'` でビルドが止まる。
 全部消したいときだけ `npm run clean:all`（そのあと `npm run build` が必要）。
@@ -40,7 +40,7 @@ cd ../web    && npm install && npm test
 共有パッケージに切り出す前の古い `dist` が残っていたので動いていただけだった。
 
 → ⭐ [`common/install.sh`](../common/install.sh) が
-**`/opt/odelic-common` に配置し、`/opt/common` をそこへのシンボリックリンクにする。**
+`/opt/odelic-common` に配置し、`/opt/common` をそこへのシンボリックリンクにする。
 `matter/install.sh` と `web/install.sh` が最初にこれを呼ぶ。
 
 ```bash
@@ -50,29 +50,29 @@ node -e "import('@odelic/common').then(m => console.log(m.ladder(true).length))"
 
 ⭐ パスを書き換える方式（`file:/opt/odelic-common` に直す）にはしていない。
 書き換えると `package-lock.json` が使えなくなり `npm ci` が `npm install` に落ちて、
-**matter.js のバージョンが勝手に上がりかねない**ため。
+matter.js のバージョンが勝手に上がりかねないため。
 
 ---
 
 ## ⚠️ テスト数が嘘になる 2 つの罠（実際に踏んだ）
 
-**テストが通っているのに実は嘘**という状態を 2 回作ったので記録しておく。
+**テストが通っているのに実は嘘** という状態を 2 回作ったので記録しておく。
 テスト数が想定と違うときは、まずこの 2 つを疑う。
 
 ### 1. `tsc` は削除されたソースの出力を消さない
 
 `capability.test.ts` を `matter` から `common` へ移したのに、
-`matter/dist/test/capability.test.js` が残って**移動前のコードでテストが通っていた**
+`matter/dist/test/capability.test.js` が残って **移動前のコードでテストが通っていた**
 （114 のまま。実数は 95）。
 
-→ 各パッケージの `test` は**必ず先に出力を消す**ようにしてある。
+→ 各パッケージの `test` は **必ず先に出力を消す** ようにしてある。
 
 ### 2. `declaration: true` が `*.test.d.ts` を吐き、それがテストとして実行される
 
 中身が空なので通ってしまい、テスト数が水増しされる。
 ローカル 38 / Pi 36 という食い違いの正体がこれだった（実数は 36）。
 
-→ `common` は**配布用**（`tsconfig.json`・`src` のみ・`declaration` あり）と
+→ `common` は **配布用**（`tsconfig.json`・`src` のみ・`declaration` あり）と
 **テスト用**（`tsconfig.test.json`・`declaration` なし・`dist-test` へ出力）に分離した。
 
 ---
@@ -86,38 +86,38 @@ node -e "import('@odelic/common').then(m => console.log(m.ladder(true).length))"
 (cd web    && npm test)   # 132 件（認証・マスク・ルーティング・TLS 判別）
 ```
 
-⭐ **どれも BLE も Pi も使わない。**開発機で実行できる。
+⭐ **どれも BLE も Pi も使わない。** 開発機で実行できる。
 
 ⚠️ `web` の TLS のテストは `openssl` で一時証明書を作る。無い環境では
 その 5 件だけ自動的に飛ばす（鍵をリポジトリに置かないため）。
 
 ### ⚠️ matter のテストは 2 つの理由で並列に走らせない
 
-`bridge.test.ts` と `admin.test.ts` はどちらも**本物の `ServerNode`** を起動する。
+`bridge.test.ts` と `admin.test.ts` はどちらも **本物の `ServerNode`** を起動する。
 `node --test` は既定でファイルごとに別プロセスで並列に走らせるので、2 つ動く。
 
 **1. ストレージのロックを取り合って永久に止まる。**`ServerNode` の id は
 `odelic-bridge` 固定なので同じ場所を使う（4 分でタイムアウトした）。
 
-→ `test/helpers/storage.ts` を **`@matter` より前に import** して
+→ `test/helpers/storage.ts` を `@matter` より前に import して
 ファイルごとに `MATTER_STORAGE_PATH` を分ける。
-⚠️ `before()` で環境変数を設定しても遅い（matter.js は **import 時**に読む）。
+⚠️ `before()` で環境変数を設定しても遅い（matter.js は import 時 に読む）。
 
-**2. ⭐ 時間に依存するテストが落ちる。**ServerNode 2 つ + mDNS + 偽 odelicd 2 つが
+2. ⭐ 時間に依存するテストが落ちる。 ServerNode 2 つ + mDNS + 偽 odelicd 2 つが
 同時に動くとタイマーが遅れ、「取りこぼしの追い打ち」（`FAST_PROBE_GAP_MS = 900`）の
 検証が窓に入らない。単独では 3 回中 3 回通るのに、並列だと落ちた。
 
-→ `--test-concurrency=1` で**直列**にした。⚠️ Pi 3 はもっと遅いので、
+→ `--test-concurrency=1` で 直列 にした。⚠️ Pi 3 はもっと遅いので、
 `install.sh` が Pi 上で走らせることを考えると直列が正しい。
 
-⚠️ ただし**非同期の競合は速いマシンでは隠れる**。Pi 3 で初めて出たバグが 2 件あるので、
+⚠️ ただし 非同期の競合は速いマシンでは隠れる。Pi 3 で初めて出たバグが 2 件あるので、
 重要な変更のあとは実機でも走らせる（`matter/install.sh` は Pi 上で `npm test` を実行する）。
 
 ---
 
 ## 実機への配備
 
-⭐ **ふつうは一括インストーラで済む。**リポジトリのルートで:
+⭐ **ふつうは一括インストーラで済む。** リポジトリのルートで:
 
 ```bash
 sudo ./install.sh <8桁ID>            # odelicd → matter → web を正しい順で入れる
@@ -130,14 +130,14 @@ sudo ./install.sh <8桁ID>            # odelicd → matter → web を正しい�
 | `odelicd` | `sudo ./odelicd/install.sh <8桁ID> 8080` |
 | `@odelic/common` | `sudo ./common/install.sh`（⭐ 下の 2 つが自動で呼ぶ） |
 | `odelic-matter` | `sudo ./matter/install.sh http://127.0.0.1:8080` |
-| `odelic-web` | `sudo ./web/install.sh` → ⭐ **初期パスワードが 1 回だけ表示される** |
+| `odelic-web` | `sudo ./web/install.sh` → ⭐ 初期パスワードが 1 回だけ表示される |
 | パスワードの作り直し | `sudo /opt/odelic-web/reset-password.sh`（⚠️ 全端末ログアウト） |
-| バックアップ | ⭐ **設定ページから ZIP で取る**（→ [08 W13](08-web-ui.md)） |
+| バックアップ | ⭐ 設定ページから ZIP で取る（→ [08 W13](08-web-ui.md)） |
 
 ⚠️ 順序は **`odelicd` → `matter` → `web`**。`web` は起動時に両方を見に行くが、
 落ちていても起動はする（照明の操作は `odelicd` さえ生きていればできる）。
 
-⚠️ **`odelic-matter` は commissioning の直後に再起動してはいけない**
+⚠️ `odelic-matter` は commissioning の直後に再起動してはいけない
 （Nest ハブが配下の器具を失う既知バグを踏む。→ [docs/07 M6-6](07-matter.md)）。
 落ち着いてからの再起動は問題なく復帰する。
 
@@ -156,14 +156,14 @@ tar czf - src dist | ssh odelic-re-connected \
 
 ## ⚠️ 秘密情報の扱い
 
-- リポジトリの 8 桁 ID は**プレースホルダ**（`12345678`）。実値は書かない
+- リポジトリの 8 桁 ID は **プレースホルダ**（`12345678`）。実値は書かない
 - 実値は環境変数で渡す: `ODELIC_ID` / `ODELIC_HOMEID`
 - `odelicd` の実値は `/etc/default/odelicd`（0600 root）にある
 - ⚠️ **バックアップの tar にはメッシュのパスワード・Matter の秘密鍵・
   ローカル CA の秘密鍵が入る**（0600 root）
-- ホーム ID（8 桁）は設定ページに**そのまま表示する**。同じ番号が公式アプリの
+- ホーム ID（8 桁）は設定ページに **そのまま表示する**。同じ番号が公式アプリの
   メニュー画面にも出ているので伏せても守れるものが無い（→ [docs/08 W10-4](08-web-ui.md)）。
   ⭐ 変更と巻き戻しは `set-id.sh`（sudoers で許可した唯一のスクリプト）に任せる
-- ⚠️ ただし**ログでは伏せたまま**（`web/src/mask.ts`）。ログは第三者に見せることがある
+- ⚠️ ただし ログでは伏せたまま（`web/src/mask.ts`）。ログは第三者に見せることがある
 - ⭐ **ログ画面はメッシュのパスワード・LOGINKEY / EVENTKEY・Matter の登録コードを
   表示前に伏せる**（`web/src/mask.ts`。⚠️ 行ごと捨てずに値だけ潰す）
