@@ -86,7 +86,7 @@ export function deviceTarget(device: OdelicDevice): OdelicTarget {
 /**
  * 操作の結果。
  *
- * ⭐ odelicd の HTTP ステータスをそのまま意味に写す（docs/03-instability.md P4）。
+ * ⭐ odelicd の HTTP ステータスをそのまま意味に写す（docs/analysis/03-instability.md P4）。
  * 「送った」と「効いた」を混ぜない。
  */
 export type CommandOutcome =

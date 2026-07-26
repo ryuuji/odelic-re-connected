@@ -4,10 +4,10 @@ ODELIC / Pairlink の暗号処理（processData / bafang_encrypt など）を
 解析するための使い捨てツール。シンボルが全部残っているので、
 関数名で指定して逆アセンブルし、BL（関数呼び出し）先を名前解決する。
 
-    python tools/disasm.py <関数名>            # 1 関数を逆アセンブル
-    python tools/disasm.py --calls <関数名>    # 呼び出している関数だけ一覧
-    python tools/disasm.py --list              # エクスポート関数一覧
-    python tools/disasm.py --xref <関数名>     # その関数を呼んでいる箇所
+    python docs/analysis/tools/disasm.py <関数名>            # 1 関数を逆アセンブル
+    python docs/analysis/tools/disasm.py --calls <関数名>    # 呼び出している関数だけ一覧
+    python docs/analysis/tools/disasm.py --list              # エクスポート関数一覧
+    python docs/analysis/tools/disasm.py --xref <関数名>     # その関数を呼んでいる箇所
 """
 
 from __future__ import annotations

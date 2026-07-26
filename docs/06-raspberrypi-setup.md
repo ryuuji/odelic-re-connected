@@ -139,7 +139,7 @@ sudo setcap 'cap_net_raw,cap_net_admin+eip' $(which btmon)
 **最初の実験。** Android では見えなかった器具のビーコンを確認する。
 
 `btmon` は **btsnoop 形式で書き出せる**ので、
-**既存の `tools/btsnoop.py` がそのまま使える**（Pairlink デコード込み）。
+**既存の `docs/analysis/tools/btsnoop.py` がそのまま使える**（Pairlink デコード込み）。
 
 Pi で 2 つのセッションを開く。
 
@@ -157,8 +157,8 @@ bluetoothctl scan on
 
 ```powershell
 scp odelic-pi:/tmp/scan.btsnoop R:\odelic-re-connected\artifacts\pi-scan.btsnoop
-python tools/btsnoop.py summary artifacts\pi-scan.btsnoop
-python tools/btsnoop.py recv    artifacts\pi-scan.btsnoop --mfg-only
+python docs/analysis/tools/btsnoop.py summary artifacts\pi-scan.btsnoop
+python docs/analysis/tools/btsnoop.py recv    artifacts\pi-scan.btsnoop --mfg-only
 ```
 
 ### 期待する結果
@@ -304,7 +304,7 @@ CODE_ON, CODE_OFF = 0x37, 0x32   # 55 / 50。値域外の状態コード
 → [02-protocol.md](02-protocol.md) C19-4
 
 `btmon -w` は **btsnoop の datalink 2001（Linux Monitor 形式）** で書き出す。
-Android の btsnoop（1002）とは別形式なので、`tools/btsnoop.py` に対応を実装した。
+Android の btsnoop（1002）とは別形式なので、`docs/analysis/tools/btsnoop.py` に対応を実装した。
 
 ### P2: Peripheral として参加 → ✅ 成功
 
@@ -313,7 +313,7 @@ Android の btsnoop（1002）とは別形式なので、`tools/btsnoop.py` に�
 `Invalid Parameters (0x0d)` で必ず失敗する（`SupportedInstances = 0`）。
 プロパティを 8 通り試して全滅したので Company ID `0x0000` は原因ではない。
 → **raw HCI（`hcitool`）で直接叩いて解決**。詳細は
-[02-protocol.md](02-protocol.md) C19-5 と `tools/pi/adv_raw.sh`。
+[02-protocol.md](02-protocol.md) C19-5 と `docs/analysis/tools/adv_raw.sh`。
 
 GATT サーバの D-Bus 登録（`GattManager1`）は問題なく動く。
 
@@ -395,13 +395,13 @@ GATT サーバの D-Bus 登録（`GattManager1`）は問題なく動く。
 
 ## フェーズ P5: 常駐サービス化（実用化）✅ 完了
 
-`tools/pi/odelicd.py` を systemd サービスとして常駐させ、HTTP API で操作できるようにした。
+`odelicd/odelicd.py` を systemd サービスとして常駐させ、HTTP API で操作できるようにした。
 
 ### インストール
 
 ```bash
 # 開発機から転送
-scp tools/pi/odelicd.py tools/pi/odelicd.service tools/pi/install.sh odelic-re-connected:~/odelicd-install/
+scp odelicd/odelicd.py odelicd/odelicd.service odelicd/install.sh odelic-re-connected:~/odelicd-install/
 
 # Pi 上で
 cd ~/odelicd-install && sudo ./install.sh 12345678 8080
@@ -664,7 +664,7 @@ ssh odelic-re-connected '/tmp/run.sh 60 --send level --bright 60 --color 50'
 
 # HCI ログを回収して解析
 scp odelic-re-connected:/tmp/p2.btsnoop artifacts\pi.btsnoop
-python tools/btsnoop.py timeline artifacts\pi.btsnoop
+python docs/analysis/tools/btsnoop.py timeline artifacts\pi.btsnoop
 ```
 
 ⚠️ 送るのは `0xC0` / `0xC1`（明るさ・色温度）と `0x70`（状態要求）だけ。
@@ -696,9 +696,9 @@ sudo sed -i 's/^#MinConnectionInterval=$/MinConnectionInterval=6/' /etc/bluetoot
 効果の確認:
 
 ```powershell
-python tools/btsnoop.py conn artifacts\trace.btsnoop
+python docs/analysis/tools/btsnoop.py conn artifacts\trace.btsnoop
 #   CPUR 列が「-」になり、interval が「28.75 → 45.00」ではなく「28.75」のままになる
-python tools/btsnoop.py latency artifacts\trace.btsnoop
+python docs/analysis/tools/btsnoop.py latency artifacts\trace.btsnoop
 #   interval 別の ACL 送信レイテンシ（15.00 ms リンクは 28.75 ms の半分以下）
 ```
 

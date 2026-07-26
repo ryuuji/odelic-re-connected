@@ -6,19 +6,19 @@ Wireshark で目視するより、バイト列の差分を機械的に出すこ�
 使い方の例:
 
     # まず全体像。GATT 接続の有無がここで判る（H1 の検証）
-    python tools/btsnoop.py summary artifacts/btsnoop_hci.log
+    python docs/analysis/tools/btsnoop.py summary artifacts/btsnoop_hci.log
 
     # 送信したアドバタイズデータ（＝アプリが出したコマンド）
-    python tools/btsnoop.py sent artifacts/btsnoop_hci.log
+    python docs/analysis/tools/btsnoop.py sent artifacts/btsnoop_hci.log
 
     # 受信したアドバタイズ（＝器具の状態通知）
-    python tools/btsnoop.py recv artifacts/btsnoop_hci.log --mfg-only
+    python docs/analysis/tools/btsnoop.py recv artifacts/btsnoop_hci.log --mfg-only
 
     # 送信コマンドのバイト差分。どのオフセットが何に対応するか
-    python tools/btsnoop.py diff artifacts/btsnoop_hci.log
+    python docs/analysis/tools/btsnoop.py diff artifacts/btsnoop_hci.log
 
     # HOMEID 8803 をバイト列から探す（BCD / 16進の両方を試す）
-    python tools/btsnoop.py find artifacts/btsnoop_hci.log 8803 2263
+    python docs/analysis/tools/btsnoop.py find artifacts/btsnoop_hci.log 8803 2263
 
 仕様: btsnoop のフォーマットは
 https://fte.com/webhelp/sodera/Content/Documentation/WhitePapers/BPA600/Appendix/Header_Format/Snoop_File_Format.htm

@@ -4,8 +4,8 @@
 [docs/02-protocol.md](../docs/02-protocol.md) の仮説 H1（コネクションレス・
 アドバタイジング方式）どおりの通信を模擬して出力する。
 
-    python tools/synth_btsnoop.py artifacts/synth.log
-    python tools/btsnoop.py summary artifacts/synth.log
+    python docs/analysis/tools/synth_btsnoop.py artifacts/synth.log
+    python docs/analysis/tools/btsnoop.py summary artifacts/synth.log
 
 ⚠️ これは**架空のデータ**であり、実際の ODELIC のプロトコルではない。
 パーサの動作確認と、出力の読み方を掴むためだけに使う。
@@ -251,10 +251,10 @@ def main(argv: list[str]) -> int:
     print(f"  記録時間  : {w.t_us / 1e6:.1f} 秒")
     print()
     print("次のコマンドで確認できます:")
-    print(f"  python tools/btsnoop.py summary {out}")
-    print(f"  python tools/btsnoop.py recv {out} --mfg-only")
-    print(f"  python tools/btsnoop.py timeline {out}")
-    print(f"  python tools/btsnoop.py find {out} C0FF05 D2040000")
+    print(f"  python docs/analysis/tools/btsnoop.py summary {out}")
+    print(f"  python docs/analysis/tools/btsnoop.py recv {out} --mfg-only")
+    print(f"  python docs/analysis/tools/btsnoop.py timeline {out}")
+    print(f"  python docs/analysis/tools/btsnoop.py find {out} C0FF05 D2040000")
     return 0
 
 

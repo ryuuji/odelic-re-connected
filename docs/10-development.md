@@ -1,13 +1,14 @@
-# `tools/pi/` — Raspberry Pi 上で動くもの
+# 10. 開発の手引き — ビルド順序・テスト・配備
 
-照明のそばに常設した Raspberry Pi 3（`odelic-re-connected`）で動く 3 つ。
+照明のそばに常設した Raspberry Pi 3（`odelic-re-connected`）で動く 4 つ。
+⭐ **ビルドとテストは開発機（Windows / macOS / Linux）で完結する。BLE も Pi も要らない。**
 
 | ディレクトリ | 中身 | 状態 |
 | --- | --- | --- |
-| （直下の `.py` / `.sh`） | ⭐ **`odelicd`** — BLE で照明を制御する常駐デーモン（Python） | ✅ 運用中 |
-| [`common/`](common/) | ⭐ **`@odelic/common`** — matter と web が共有する「プロトコル由来の事実」 | ✅ 完成 |
-| [`matter/`](matter/) | ⭐ **`odelic-matter`** — Matter ブリッジ（Google Home 等から操作） | ✅ 運用中 |
-| [`web/`](web/) | ⭐ **`odelic-web`** — 設定ページとスマホ UI（HTTPS + パスワード） | ✅ 完成 |
+| [`odelicd/`](../odelicd) | ⭐ **`odelicd`** — BLE で照明を制御する常駐デーモン（Python） | ✅ 運用中 |
+| [`common/`](../common) | ⭐ **`@odelic/common`** — matter と web が共有する「プロトコル由来の事実」 | ✅ 完成 |
+| [`matter/`](../matter) | ⭐ **`odelic-matter`** — Matter ブリッジ（Google Home 等から操作） | ✅ 運用中 |
+| [`web/`](../web) | ⭐ **`odelic-web`** — 設定ページとスマホ UI（HTTPS + パスワード） | ✅ 完成 |
 
 ---
 
@@ -18,7 +19,7 @@ npm はこれをシンボリックリンクにするので、**`common` の `dis
 
 ```bash
 # ⭐ 必ず common を先にビルドする
-cd tools/pi/common && npm install && npm run build
+cd common && npm install && npm run build
 
 cd ../matter && npm install && npm test
 cd ../web    && npm install && npm test
@@ -38,7 +39,7 @@ cd ../web    && npm install && npm test
 **実際に一度壊れていた。**`/opt/odelic-matter/node_modules/@odelic` が存在しないまま、
 共有パッケージに切り出す前の古い `dist` が残っていたので動いていただけだった。
 
-→ ⭐ [`common/install.sh`](common/README.md) が
+→ ⭐ [`common/install.sh`](../common/install.sh) が
 **`/opt/odelic-common` に配置し、`/opt/common` をそこへのシンボリックリンクにする。**
 `matter/install.sh` と `web/install.sh` が最初にこれを呼ぶ。
 
@@ -79,9 +80,10 @@ node -e "import('@odelic/common').then(m => console.log(m.ladder(true).length))"
 ## テストの実行
 
 ```bash
-cd tools/pi/common && npm test    # 48 件（器具の能力・明るさの段・MAC・JSONC）
-cd tools/pi/matter && npm test    # 114 件（変換・設定・名簿・ブリッジ統合・管理 API）
-cd tools/pi/web    && npm test    # 123 件（認証・マスク・ルーティング・TLS 判別）
+# ⭐ リポジトリのルートから。それぞれ独立に走らせられる
+(cd common && npm test)   #  48 件（器具の能力・明るさの段・MAC・JSONC）
+(cd matter && npm test)   # 114 件（変換・設定・名簿・ブリッジ統合・管理 API）
+(cd web    && npm test)   # 132 件（認証・マスク・ルーティング・TLS 判別）
 ```
 
 ⭐ **どれも BLE も Pi も使わない。**開発機で実行できる。
@@ -115,9 +117,18 @@ cd tools/pi/web    && npm test    # 123 件（認証・マスク・ルーティ�
 
 ## 実機への配備
 
+⭐ **ふつうは一括インストーラで済む。**リポジトリのルートで:
+
+```bash
+sudo ./install.sh <8桁ID>            # odelicd → matter → web を正しい順で入れる
+sudo ./install.sh <8桁ID> --with-backup
+```
+
+個別に入れ直すとき、または一括インストーラが何をしているかを知りたいとき。
+
 | 対象 | 手順 |
 | --- | --- |
-| `odelicd` | `sudo ./install.sh <8桁ID> 8080` |
+| `odelicd` | `sudo ./odelicd/install.sh <8桁ID> 8080` |
 | `@odelic/common` | `sudo ./common/install.sh`（⭐ 下の 2 つが自動で呼ぶ） |
 | `odelic-matter` | `sudo ./matter/install.sh http://127.0.0.1:8080` |
 | `odelic-web` | `sudo ./web/install.sh` → ⭐ **初期パスワードが 1 回だけ表示される** |
@@ -128,7 +139,7 @@ cd tools/pi/web    && npm test    # 123 件（認証・マスク・ルーティ�
 落ちていても起動はする（照明の操作は `odelicd` さえ生きていればできる）。
 
 ⚠️ **`odelic-matter` は commissioning の直後に再起動してはいけない**
-（Nest ハブが配下の器具を失う既知バグを踏む。→ [docs/07 M6-6](../../docs/07-matter.md)）。
+（Nest ハブが配下の器具を失う既知バグを踏む。→ [docs/07 M6-6](07-matter.md)）。
 落ち着いてからの再起動は問題なく復帰する。
 
 ### 反復開発のとき
@@ -137,7 +148,7 @@ cd tools/pi/web    && npm test    # 123 件（認証・マスク・ルーティ�
 開発機でビルドして `dist` ごと送るのが速い。
 
 ```bash
-cd tools/pi/matter && npm run build
+cd matter && npm run build
 tar czf - src dist | ssh odelic-re-connected \
   "sudo tar xzf - -C /opt/odelic-matter && sudo chown -R odelic-matter:odelic-matter /opt/odelic-matter && sudo systemctl restart odelic-matter"
 ```
@@ -152,7 +163,7 @@ tar czf - src dist | ssh odelic-re-connected \
 - ⚠️ **バックアップの tar にはメッシュのパスワード・Matter の秘密鍵・
   ローカル CA の秘密鍵が入る**（0600 root）
 - ホーム ID（8 桁）は設定ページに**そのまま表示する**。同じ番号が公式アプリの
-  メニュー画面にも出ているので伏せても守れるものが無い（→ [docs/08 W10-4](../../docs/08-web-ui.md)）。
+  メニュー画面にも出ているので伏せても守れるものが無い（→ [docs/08 W10-4](08-web-ui.md)）。
   ⭐ 変更と巻き戻しは `set-id.sh`（sudoers で許可した唯一のスクリプト）に任せる
 - ⚠️ ただし**ログでは伏せたまま**（`web/src/mask.ts`）。ログは第三者に見せることがある
 - ⭐ **ログ画面はメッシュのパスワード・LOGINKEY / EVENTKEY・Matter の登録コードを

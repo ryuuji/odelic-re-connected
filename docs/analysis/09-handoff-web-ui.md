@@ -1,6 +1,6 @@
 # 09. 設定ページ（`odelic-web`）— 完成の記録と踏んだ罠
 
-設計は [08-web-ui.md](08-web-ui.md)、ここには**何が動いているか・決めたこと・
+設計は [08-web-ui.md](../08-web-ui.md)、ここには**何が動いているか・決めたこと・
 踏んだ罠**を書く。元は別セッションへの引き継ぎ用だったが、
 ✅ **2026-07-26 に #2b〜#10 をすべて実装した**ので記録に切り替えた。
 
@@ -19,8 +19,8 @@ ODELIC 照明を**ブラウザから設定・操作**できるようにした（
 | `odelic-web`（設定ページ） | ✅ **完成** |
 | 状態のバックアップ | ✅ 毎日 03:30（⭐ CA の鍵とパスワードも対象に追加） |
 
-→ 全体像は [tools/pi/README.md](../tools/pi/README.md)、
-Matter の詳細は [07-matter.md](07-matter.md)。
+→ 全体像は [docs/10-development.md](../10-development.md)、
+Matter の詳細は [07-matter.md](../07-matter.md)。
 
 ---
 
@@ -28,8 +28,8 @@ Matter の詳細は [07-matter.md](07-matter.md)。
 
 | # | 項目 | 成果物 |
 | --- | --- | --- |
-| 1 | 共有パッケージ | [`tools/pi/common/`](../tools/pi/common/) — **48 テスト** |
-| 2a | HTTPS 証明書 | [`web/gencert.sh`](../tools/pi/web/gencert.sh) |
+| 1 | 共有パッケージ | [`common/`](../../common) — **48 テスト** |
+| 2a | HTTPS 証明書 | [`web/gencert.sh`](../../web/gencert.sh) |
 | 2b | ⭐ Web サーバ本体（HTTPS + パスワード + セッション） | `web/src/{server,auth,routes}.ts` |
 | 3 | 照明の操作画面 | `web/public/js/lights.js` |
 | 4 | 状態画面 | `web/public/js/status.js` |
@@ -57,7 +57,7 @@ Matter の詳細は [07-matter.md](07-matter.md)。
 | 5 | ⭐ **照明の閉ループ** | ✅ 点灯 → 主灯 50% → 常夜灯（中）→ 消灯。**すべて器具の応答で確認** |
 | 6 | 常夜灯の段 | ✅ 段 1 → `night=2`（＝ 中）。`ladder()` の並びと器具の値が一致 |
 | 7 | ⭐⭐ **ログのマスク** | ✅ 実機の journal で **秘密が 1 つも通らない**（下記） |
-| 8 | ホーム ID | ✅ 8 桁をそのまま表示（→ [08 W10-4](08-web-ui.md)）。不正な引数は 4 種すべて 400 で拒否 |
+| 8 | ホーム ID | ✅ 8 桁をそのまま表示（→ [08 W10-4](../08-web-ui.md)）。不正な引数は 4 種すべて 400 で拒否 |
 | 9 | sudoers | ✅ `set-id.sh` 1 本だけ。`--help` も `; reboot` も拒否 |
 | 10 | 器具名の変更 | ✅ **再起動なしで反映**し、名簿に残った |
 | 11 | Matter | ✅ commissioned / fabric 1 個（Google 0x6006）/ エンドポイント番号は不変 |
@@ -107,7 +107,7 @@ Matter の詳細は [07-matter.md](07-matter.md)。
 ⚠️ ブラウザから初回設定させる方式は**採らなかった**。LAN 内で
 **先に到達した人**がパスワードを決められてしまうため。
 
-設計から変えた 6 点は [08 W10](08-web-ui.md#w10-設計から変えたところ) に理由つきで書いた。
+設計から変えた 6 点は [08 W10](../08-web-ui.md#w10-設計から変えたところ) に理由つきで書いた。
 
 ---
 
@@ -125,7 +125,7 @@ Matter の詳細は [07-matter.md](07-matter.md)。
 → **管理 API を載せた新しいブリッジを配備した瞬間に
 `Cannot find module '@odelic/common'` で落ちるところだった。**
 
-対処（[tools/pi/README.md](../tools/pi/README.md) にも書いた）。
+対処（[docs/10-development.md](../10-development.md) にも書いた）。
 
 1. ⭐ `common/install.sh` が `/opt/odelic-common` に配置し、
    **`/opt/common` をそこへのシンボリックリンク**にする
@@ -202,7 +202,7 @@ Matter の詳細は [07-matter.md](07-matter.md)。
 
 ### 入力ミスの検出
 
-⭐ **誤った ID は器具の応答で分かる**（→ [02 C23-1](02-protocol.md)）。
+⭐ **誤った ID は器具の応答で分かる**（→ [02 C23-1](../02-protocol.md)）。
 `odelicd` は `PERIPHERAL_LOGIN` を復号して先頭 4 バイトが HOMEID と一致するかを見ている。
 
 → 保存後、**ブラウザが 3 秒ごとに `GET /api/homeid` を 60 秒見張る。**
@@ -342,5 +342,5 @@ Matter の詳細は [07-matter.md](07-matter.md)。
 - [ ] `odelicd` を `127.0.0.1` に絞るか（絞ると開発機からの `curl` が SSH 経由になる）。
       ⭐ 設定ページは独立に認証を持つので、絞っても動く
 - [x] `MemoryMax=192M` が妥当か → ✅ 実測 77 MB。余裕あり
-- [ ] 中間色温度が K 線形か mired 線形か（→ [07 M10b](07-matter.md)。今回も触っていない）
+- [ ] 中間色温度が K 線形か mired 線形か（→ [07 M10b](../07-matter.md)。今回も触っていない）
 - [ ] `Matter` 画面の「追加フェアリング」を実際に使う（Apple Home / Alexa を足すとき）

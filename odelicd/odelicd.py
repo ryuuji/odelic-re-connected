@@ -6,7 +6,7 @@ Raspberry Pi 上で常駐し、器具との GATT 接続を維持したまま HTT
 
 プロトコルの根拠は docs/02-protocol.md の C6 / C15 / C16 / C17 / C19。
 
-## 設計方針（docs/03-instability.md の P1〜P5 に対応）
+## 設計方針（docs/analysis/03-instability.md の P1〜P5 に対応）
 
 - P1 状態を常時保持   : 接続を維持し、器具からのイベントを蓄積する
 - P2 期待状態まで再送 : コマンドを複数回送る（絶対値指定なので冪等）
@@ -2096,7 +2096,7 @@ class Daemon:
         """新しい操作を登録し、古い操作の再送を破棄する。
 
         ⭐ これが無いと、明るさを連続で動かしたときに古い値が後から届いて
-        明るさが跳ね返る。`docs/05-app-design.md` の要件。
+        明るさが跳ね返る。`docs/analysis/05-app-design.md` の要件。
         """
         drop: list[Intent] = []
         with self.lock:

@@ -13,7 +13,7 @@
  * **こちらが odelicd を叩く前に invoke へ Success を返している**。つまり
  * 「送ったが収束しなかった」を invoke の失敗として返す方法がない。
  *
- * 代わりに次の 2 つで正直さを保つ（docs/03-instability.md の P4）。
+ * 代わりに次の 2 つで正直さを保つ（docs/analysis/03-instability.md の P4）。
  *
  * 1. 失敗したら属性を**器具の実状態へ引き戻す**（Google Home の表示が元に戻る）
  * 2. 状態が分からない器具は `Reachable = false` にする

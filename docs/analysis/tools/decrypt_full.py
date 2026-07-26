@@ -1,4 +1,4 @@
-"""⚠️ 【廃止】このスクリプトの前提は誤りでした。→ tools/decrypt_recv.py を使ってください。
+"""⚠️ 【廃止】このスクリプトの前提は誤りでした。→ docs/analysis/tools/decrypt_recv.py を使ってください。
 
 XOR ホワイトニング鍵を「vaddr[0] + MAC の一部」と推定して総当たりしていますが、
 実際の鍵は **PERIPHERAL_LOGIN（`01 19` + 16 バイト）を LOGINKEY で復号した

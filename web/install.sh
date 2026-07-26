@@ -8,7 +8,7 @@
 #    ログイン画面が案内しているのはそちら（install.sh の置き場所は人によって違うため）。
 #
 # 前提:
-#   - odelicd が動いていること（tools/pi/install.sh 済み）
+#   - odelicd が動いていること（odelicd/install.sh 済み）
 #   - Node.js 20 以降
 #
 # ## ⭐ 初期パスワードの決め方

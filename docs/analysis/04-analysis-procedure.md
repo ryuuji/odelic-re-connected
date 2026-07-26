@@ -18,7 +18,7 @@
 | Chocolatey / winget | ✅ 両方あり | ツール導入 |
 | **adb（platform-tools）** | ✅ **37.0.1** | APK 取得・ログ採取 |
 | **jadx** | ✅ **1.5.6** | APK 逆コンパイル |
-| **自作 btsnoop パーサ** | ✅ `tools/btsnoop.py` | HCI ログの差分解析 |
+| **自作 btsnoop パーサ** | ✅ `docs/analysis/tools/btsnoop.py` | HCI ログの差分解析 |
 | Wireshark | ⏸ 保留（管理者権限が必要） | HCI ログの目視確認 |
 | apktool | ❌ なし | jadx で足りる場合は不要 |
 | Android SDK / Studio | ❌ なし | 新アプリのビルド時に導入 |
@@ -67,7 +67,7 @@ Java 25 で動作確認済み。`jadx-gui` で対話的に読み、`jadx` CLI �
 **Wireshark は保留**した。インストールに管理者権限（UAC）が必要で、
 かつ**差分解析の用途では GUI より不便**なため。
 
-代わりに **`tools/btsnoop.py`（自作）**を主力にする。→ 後述の「自作解析ツール」節。
+代わりに **`docs/analysis/tools/btsnoop.py`（自作）**を主力にする。→ 後述の「自作解析ツール」節。
 
 Wireshark も目視確認には有用なので、必要になったら入れる。
 
@@ -239,7 +239,7 @@ UUID.fromString
 GATT が登録フェーズのみに使われている可能性があるため、
 呼び出し元をたどって「いつ使われるか」を確認する。
 
-**識別子・鍵** ✅ 解明済み（[02-protocol.md](02-protocol.md) C16）
+**識別子・鍵** ✅ 解明済み（[02-protocol.md](../02-protocol.md) C16）
 
 ```
 homeId  HomeId  HOMEID  homeid
@@ -357,7 +357,7 @@ adb shell getprop persist.bluetooth.btsnooplogmode   # "full" が返れば有効
 
 GATT で流れる PDU は暗号化されており、**純正アプリのログ出力は
 リリースビルドで空実装**なので平文 PDU は取れない
-（[02-protocol.md](02-protocol.md) C17-3b）。それでも検証できる範囲は広い。
+（[02-protocol.md](../02-protocol.md) C17-3b）。それでも検証できる範囲は広い。
 
 | ✅ 検証できる | ❌ 検証できない |
 | --- | --- |
@@ -376,10 +376,10 @@ GATT で流れる PDU は暗号化されており、**純正アプリのログ�
 
 ```powershell
 # 照明のそばへ行く前
-pwsh tools/collect_logs.ps1 prepare
+pwsh docs/analysis/tools/collect_logs.ps1 prepare
 
 # 操作を終えて開発機に戻ったら
-pwsh tools/collect_logs.ps1 collect
+pwsh docs/analysis/tools/collect_logs.ps1 collect
 ```
 
 `prepare` は logcat バッファ拡大・スヌープログの有効状態チェック・
@@ -410,26 +410,26 @@ adb shell dumpsys bluetooth_manager > R:\odelic-re-connected\artifacts\bluetooth
 
 ### 3-4. 自作パーサで解析する（主力）
 
-`tools/btsnoop.py` を使う。→ 詳細は後述の「自作解析ツール」節。
+`docs/analysis/tools/btsnoop.py` を使う。→ 詳細は後述の「自作解析ツール」節。
 
 ```powershell
 # ① まず全体像。GATT 接続の有無で H1 が判定される
-python tools/btsnoop.py summary artifacts/btsnoop_hci.log
+python docs/analysis/tools/btsnoop.py summary artifacts/btsnoop_hci.log
 
 # ② 送信したアドバタイズ（＝アプリが出したコマンド）
-python tools/btsnoop.py sent artifacts/btsnoop_hci.log
+python docs/analysis/tools/btsnoop.py sent artifacts/btsnoop_hci.log
 
 # ③ バイト差分。どのオフセットが何に対応するか
-python tools/btsnoop.py diff artifacts/btsnoop_hci.log
+python docs/analysis/tools/btsnoop.py diff artifacts/btsnoop_hci.log
 
 # ④ HOMEID を探す（ID 表示 12345678 → HOMEID 1234 = 0x04D2 → LE で FF 26）
-python tools/btsnoop.py find artifacts/btsnoop_hci.log FF26 04D2
+python docs/analysis/tools/btsnoop.py find artifacts/btsnoop_hci.log FF26 04D2
 
 # ⑤ パスワードの ASCII を探す（"5678" → 35 36 37 38）
-python tools/btsnoop.py find artifacts/btsnoop_hci.log 35363738
+python docs/analysis/tools/btsnoop.py find artifacts/btsnoop_hci.log 35363738
 
 # ⑤ 操作とパケットの対応づけ
-python tools/btsnoop.py timeline artifacts/btsnoop_hci.log
+python docs/analysis/tools/btsnoop.py timeline artifacts/btsnoop_hci.log
 ```
 
 `summary` は仮説 H1 の判定を自動で出す。
@@ -470,20 +470,20 @@ bthci_evt.bd_addr[0:3] == 00:95:69 || bthci_evt.bd_addr[0:3] == f0:ac:d7
 ```
 
 HOMEID のエンコーディングは静的解析で確定済み
-（[02-protocol.md](02-protocol.md) C16）。10 進数の**リトルエンディアン 4 バイト**で、
+（[02-protocol.md](../02-protocol.md) C16）。10 進数の**リトルエンディアン 4 バイト**で、
 上位 2 バイトは常に `00 00`。
 器具の MAC OUI は `API_get_mesh_homeid_from_scan` の判定条件から判明した 2 種類。
 
 ### 3-6. 判明したことを記録する
 
-[02-protocol.md](02-protocol.md) の「確定事項」に、
+[02-protocol.md](../02-protocol.md) の「確定事項」に、
 根拠となるパケットの位置（レコード番号）とともに記録する。
 
 ---
 
 ## 自作解析ツール
 
-### `tools/btsnoop.py` — btsnoop パーサ
+### `docs/analysis/tools/btsnoop.py` — btsnoop パーサ
 
 Android の HCI スヌープログを解析する。Wireshark の代わりではなく、
 **Wireshark では手作業になる差分解析を機械的にやる**ためのもの。
@@ -497,7 +497,7 @@ Android の HCI スヌープログを解析する。Wireshark の代わりでは
 | `find` | バイト列パターンを全パケットから検索。逆順も自動で試す |
 | `timeline` | 送受信・**GATT 操作**・アドバタイズ有効化・接続を時系列に並べる |
 
-**Pairlink / ODELIC 固有のデコード**（[02-protocol.md](02-protocol.md) C3・C16・C17 を実装）
+**Pairlink / ODELIC 固有のデコード**（[02-protocol.md](../02-protocol.md) C3・C16・C17 を実装）
 
 - Company ID `0x0000` + `[C0\|C1][FF][既知の ADV type]` を Pairlink 形式として認識
 - `ADV_*` の種別名を表示（`ADV_PHONE` はスマホ送信、`ADV_CONNECTABLE` は器具）
@@ -526,11 +526,11 @@ Android の HCI スヌープログを解析する。Wireshark の代わりでは
 ユニークなペイロードが 1 種類しかない場合は
 「同一操作でバイト列が変わらない＝平文かつ再送カウンタなし」と判定できる。
 
-### `tools/collect_logs.ps1` — ログ回収スクリプト
+### `docs/analysis/tools/collect_logs.ps1` — ログ回収スクリプト
 
 `prepare` / `collect` の 2 モード。→ 3-3 を参照。
 
-### `tools/synth_btsnoop.py` — 検証用の合成ログ生成
+### `docs/analysis/tools/synth_btsnoop.py` — 検証用の合成ログ生成
 
 実機ログが無い状態でパーサの動作を確かめるためのもの。
 **静的解析で判明した実際の形式**を模擬して出力する。
@@ -541,9 +541,9 @@ Android の HCI スヌープログを解析する。Wireshark の代わりでは
 - ATT Write Command / Notification（ペイロードは暗号化を模擬）
 
 ```powershell
-python tools/synth_btsnoop.py artifacts/synth.log
-python tools/btsnoop.py summary artifacts/synth.log
-python tools/btsnoop.py diff artifacts/synth.log
+python docs/analysis/tools/synth_btsnoop.py artifacts/synth.log
+python docs/analysis/tools/btsnoop.py summary artifacts/synth.log
+python docs/analysis/tools/btsnoop.py diff artifacts/synth.log
 ```
 
 ⚠️ **これは架空のデータで、実際の ODELIC のプロトコルではない。**
@@ -558,7 +558,7 @@ python tools/btsnoop.py diff artifacts/synth.log
 
 ## フェーズ 4: プロトコルの文書化
 
-フェーズ 2・3 で得た情報を [02-protocol.md](02-protocol.md) に統合する。
+フェーズ 2・3 で得た情報を [02-protocol.md](../02-protocol.md) に統合する。
 
 - パケットフォーマット（バイトオフセットごとの意味）
 - コマンド一覧と引数の範囲

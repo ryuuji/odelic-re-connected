@@ -250,6 +250,6 @@ export function deviceStateToMatter(
         return { onOff: false, level: null, mireds };
     }
 
-    // 状態が未取得。何も断定しない（docs/03-instability.md の P4）
+    // 状態が未取得。何も断定しない（docs/analysis/03-instability.md の P4）
     return { onOff: null, level: null, mireds };
 }

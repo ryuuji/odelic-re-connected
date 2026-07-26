@@ -11,14 +11,14 @@
 
 .EXAMPLE
     # 照明のそばへ行く前に
-    pwsh tools/collect_logs.ps1 prepare
+    pwsh docs/analysis/tools/collect_logs.ps1 prepare
 
     # 操作を終えて戻ってきたら
-    pwsh tools/collect_logs.ps1 collect
+    pwsh docs/analysis/tools/collect_logs.ps1 collect
 
 .NOTES
     HCI スヌープログの有効化（開発者オプション）は adb からできないため、
-    端末の画面で手動操作すること。詳細は docs/04-analysis-procedure.md の 3-1。
+    端末の画面で手動操作すること。詳細は docs/analysis/04-analysis-procedure.md の 3-1。
 #>
 [CmdletBinding()]
 param(
@@ -39,7 +39,7 @@ function Resolve-Adb {
     $winget = Join-Path $env:LOCALAPPDATA `
         'Microsoft\WinGet\Packages\Google.PlatformTools_Microsoft.Winget.Source_8wekyb3d8bbwe\platform-tools\adb.exe'
     if (Test-Path $winget) { return $winget }
-    throw "adb が見つかりません。docs/04-analysis-procedure.md の 0-1 を参照してください。"
+    throw "adb が見つかりません。docs/analysis/04-analysis-procedure.md の 0-1 を参照してください。"
 }
 
 $adb = Resolve-Adb
@@ -91,12 +91,12 @@ if ($Mode -eq 'prepare') {
 
 === 次にやること ===
   1. 端末を照明のそばへ持っていく（PC は不要）
-  2. アプリを起動し、docs/04-analysis-procedure.md の 3-2 のシナリオを
+  2. アプリを起動し、docs/analysis/04-analysis-procedure.md の 3-2 のシナリオを
      1 操作ずつ、間に数秒空けて実施する
      ⚠️ グループ設定の変更・器具登録の初期化はやらない
   3. 開発機に戻って USB を接続し、次を実行
 
-       pwsh tools/collect_logs.ps1 collect
+       pwsh docs/analysis/tools/collect_logs.ps1 collect
 "@ -ForegroundColor Cyan
     exit 0
 }
@@ -147,9 +147,9 @@ try {
         $kb = [math]::Round((Get-Item $dest).Length / 1KB, 1)
         Write-Host "    $dest  ($kb KB)" -ForegroundColor Green
         Write-Host "`n=== 解析 ===" -ForegroundColor Green
-        Write-Host "  python tools/btsnoop.py summary  `"$dest`""
-        Write-Host "  python tools/btsnoop.py timeline `"$dest`""
-        Write-Host "  python tools/btsnoop.py recv     `"$dest`" --mfg-only"
+        Write-Host "  python docs/analysis/tools/btsnoop.py summary  `"$dest`""
+        Write-Host "  python docs/analysis/tools/btsnoop.py timeline `"$dest`""
+        Write-Host "  python docs/analysis/tools/btsnoop.py recv     `"$dest`" --mfg-only"
     }
 } finally {
     $zip.Dispose()

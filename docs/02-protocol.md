@@ -79,7 +79,7 @@ PL_JOIN_STATE_PERIPHERAL = 3
 
 これで公式の但し書きが説明できた。**アドバタイズのためではなく、
 スマホが GATT サーバ（Peripheral role）になるため。**
-[01-findings.md](01-findings.md) で立てた仮説の「反証されうる点」に書いた
+[01-findings.md](analysis/01-findings.md) で立てた仮説の「反証されうる点」に書いた
 もう一方の可能性が正解だった。
 
 根拠: `MeshCommon.sendData()` / `MeshService` の `join_mode`・`PL_JOIN_STATE_*`・
@@ -378,7 +378,7 @@ return null;   // ★ 番号が飛んだら黙って破棄。再送要求もタ�
 `segment_data_offset` と `current_seq` はリセットされない。
 つまり**一度パケットを落とすと、以降そのセッションの再組み立てが永久に失敗する**。
 
-→ [03-instability.md](03-instability.md) の **I7（書き込み系の非冪等性）を裏付ける実装上の証拠**。
+→ [03-instability.md](analysis/03-instability.md) の **I7（書き込み系の非冪等性）を裏付ける実装上の証拠**。
 グループ設定の保存失敗（S4）と、保存後に操作不能になる（S5）症状の説明になる。
 
 セグメント数は 4bit なので**最大 15**。1 セグメント 20 バイト弱なので
@@ -401,7 +401,7 @@ SCHEDULE_EXACT_ALARM, RECEIVE_BOOT_COMPLETED, FOREGROUND_SERVICE
 
 **`BLUETOOTH_ADVERTISE` が宣言されている**ことで、アドバタイズを使う（C3）ことが裏付けられる。
 
-Android 12+ の新権限には移行済みなので、[03-instability.md](03-instability.md) の
+Android 12+ の新権限には移行済みなので、[03-instability.md](analysis/03-instability.md) の
 **I6 は「未対応」ではなかった**。ただし `BLUETOOTH_SCAN` に `neverForLocation` が付いておらず
 `ACCESS_FINE_LOCATION` を要求しているため、
 「権限を全部許可しないと動かない」（S8）は説明できる。**I6 は部分的に成立**。
@@ -690,12 +690,12 @@ else {
 ```
 
 送った値と返ってきた値を**バイト単位でそのまま比較できる**ので、
-収束判定（[03-instability.md](03-instability.md) の P2 / P4）が単純な等値比較で済む。
+収束判定（[03-instability.md](analysis/03-instability.md) の P2 / P4）が単純な等値比較で済む。
 
 `syncAllState()` は 1 バイトずれて `data[6][7]` を見る（50/50 = 全消灯、55/55 = 全点灯）。
 
 → **これで「器具の現在状態を読む」実装が完全に判明した。**
-状態を常時監視する（[03-instability.md](03-instability.md) の P1）ために必要な情報は揃っている。
+状態を常時監視する（[03-instability.md](analysis/03-instability.md) の P1）ために必要な情報は揃っている。
 
 #### C15-10. `CFormat.Header` — 別系統のプロトコル定義
 
@@ -822,7 +822,7 @@ return String.valueOf(Util.byte2int(new byte[]{
 - **器具の MAC アドレス上位（OUI 相当）が `00:95:69` または `F0:AC:D7`**
   （`hexStringToBytesInv` で反転されるため、判定は逆順のバイトで行われている）
 
-→ **HCI ログで器具を特定するのに使える。** `tools/btsnoop.py recv --addr` の
+→ **HCI ログで器具を特定するのに使える。** `docs/analysis/tools/btsnoop.py recv --addr` の
 絞り込みに、この 2 つの OUI が手がかりになる。
 
 #### C16-5. ⚠️ セキュリティ上の観察
@@ -834,7 +834,7 @@ return String.valueOf(Util.byte2int(new byte[]{
 - `LightLoginIDReceiveAct`（「ID 受信」機能）が存在し、
   **8 桁の ID をコントローラ間で無線送信できる**
 - ODELIC のユーザー登録ではパスワードが自動生成でユーザー変更不可
-  （[01-findings.md](01-findings.md) のサカエン記事）だが、
+  （[01-findings.md](analysis/01-findings.md) のサカエン記事）だが、
   これは Web 会員登録の話で、この 4 桁パスワードとは別
 
 これは**自分の器具を操作するための解析**の範囲であり、
@@ -922,7 +922,7 @@ AD Type 0xFF (Manufacturer Specific Data)
 → **HCI ログの検索パターンが確定した。**
 
 ```powershell
-python tools/btsnoop.py find artifacts/btsnoop_hci.log C0FF05D2040000
+python docs/analysis/tools/btsnoop.py find artifacts/btsnoop_hci.log C0FF05D2040000
 ```
 
 器具側のアドバタイズは `[C0][FF][82 or 01 or 02]` の直後 4 バイトが HOMEID（C16-4）。
@@ -1177,7 +1177,7 @@ UI は 2 次元パッド（`BluetoothControlView.getReal_x()` / `getReal_y()`）
 
 上のダンプの通り、**各コマンドは 1 回しか送られていない**
 （141.1s / 145.6s / 149.4s と、操作ごとに 1 発）。
-到達確認も再送もない。**[03-instability.md](03-instability.md) の I1 が実測で裏付けられた。**
+到達確認も再送もない。**[03-instability.md](analysis/03-instability.md) の I1 が実測で裏付けられた。**
 
 一方、**I1 の当初の予測「アドバタイズを数百 ms で止めている」は外れ**。
 実測のアドバタイズ継続時間は **21〜95 秒（中央 36.8 秒）** で、出しっぱなしだった。
@@ -1223,7 +1223,7 @@ PLAN.md に記載されていた `PLTCEOC-05` が、**GATT の characteristic �
 ### C19. ⭐⭐⭐ Raspberry Pi でメッシュ参加に成功（2026-07-25）
 
 **純正アプリも `.so` も使わず、Raspberry Pi 3 から自前実装でメッシュに参加できた。**
-実装は `tools/pi/mesh_peripheral.py`。
+実装は `docs/analysis/tools/mesh_peripheral.py`。
 
 #### C19-1. 成功した参加シーケンス（実測）
 
@@ -1340,7 +1340,7 @@ Pi で 43 秒スキャンして LE デバイス 19 台・アドバタイズ 103 
 **自作アプリでもランダムアドレスにすべき**。
 
 ⚠️ **ただしこれは「登録済みコントローラ 4 台まで」という仕様
-（[01-findings.md](01-findings.md)）を消費している可能性がある。**
+（[01-findings.md](analysis/01-findings.md)）を消費している可能性がある。**
 毎回新しいアドレスで参加し続けると枠を食い潰す恐れがあるので、
 **実運用ではアドレスを固定して使い回す**設計にすべき **[要検証]**。
 
@@ -1499,7 +1499,7 @@ hcitool -i hci0 cmd 0x08 0x000a 01
 ### C21. ⭐ `libnative-lib.so` の静的解析（2026-07-25）
 
 `artifacts/so/lib/arm64-v8a/libnative-lib.so`（arm64 / 100 KB）を
-`capstone` + `lief`（`tools/disasm.py`）で解析した。**シンボルは全て残っている。**
+`capstone` + `lief`（`docs/analysis/tools/disasm.py`）で解析した。**シンボルは全て残っている。**
 
 #### C21-1. 暗号関数のマップ
 
@@ -1683,7 +1683,7 @@ C22 では「XOR ホワイトニング鍵（器具の 4 バイト）が判らな
 **答えは `cmd_handle` の `PERIPHERAL_LOGIN` 処理にあった。**
 器具は接続直後に、その鍵を自分から送ってきていた。
 
-検証ツール: `python tools/decrypt_recv.py <btsnoop ログ> <8 桁 ID>`
+検証ツール: `python docs/analysis/tools/decrypt_recv.py <btsnoop ログ> <8 桁 ID>`
 
 #### C23-1. ⭐⭐ 鍵は `PERIPHERAL_LOGIN` の中に入っていた
 
@@ -1917,8 +1917,8 @@ else                             lightItem.night_status++;
 ⚠️ **以前ここに書いていた一覧は不完全だった。**単独比較（`b == ...`）だけを拾っていて、
 `switch` の 4 グループ（`0x40`〜`0x43` / `0x4B`〜`0x53` / `0x63`〜`0x66` / `0x78`〜`0x7D`）が
 漏れていた。上が逆コンパイル結果の全体。
-→ 実装は [`tools/pi/matter/src/capability.ts`](../tools/pi/matter/src/capability.ts)、
-テストは [`test/capability.test.ts`](../tools/pi/matter/test/capability.test.ts)。
+→ 実装は [`common/src/capability.ts`](../common/src/capability.ts)、
+テストは [`test/capability.test.ts`](../common/test/capability.test.ts)。
 
 ⭐ **手元の器具は `0x2B` なので専用ナイトライトに対応している**（C23-4 で判明）。
 
@@ -2014,7 +2014,7 @@ curl -X POST 'http://odelic-pi:8080/night?level=1&target=dev:05000000'
 ### C25. 器具ファームウェア（APK 同梱 OTA）の解析可能性（2026-07-25）
 
 `assets/ota/*.mp3` は音声ではなく器具のファームウェア。
-**器具側から解析できないか**を評価した。→ ツール: `tools/fw_analyze.py`
+**器具側から解析できないか**を評価した。→ ツール: `docs/analysis/tools/fw_analyze.py`
 
 #### C25-1. 同梱されているもの
 
@@ -2062,7 +2062,7 @@ Ping 応答の `[16..17]` = C23-4 の「機種コード」と同じ値）。
 
 **残っている未解読は「純正アプリも使っていないフィールド」だけ**なので、
 ファームウェア解析に踏み込む動機は現時点では小さい。
-必要になったら「独自コンテナの解析」から始める（`tools/fw_analyze.py` が入口）。
+必要になったら「独自コンテナの解析」から始める（`docs/analysis/tools/fw_analyze.py` が入口）。
 
 ### C26. ⭐⭐ ベンダー公式仕様書との突き合わせ（2026-07-25）
 
@@ -2163,7 +2163,7 @@ User Data[0x05]（イベント） モジュール → MCU（メッシュから�
 
 Pi は Peripheral だが、**同じリンク上で GATT クライアントにもなれる**。
 BlueZ が器具側のサービスを解決済みだったので、D-Bus から全部読めた（読み取りのみ・非破壊）。
-→ ツール: `tools/pi/gattdump.py`
+→ ツール: `docs/analysis/tools/gattdump.py`
 
 器具 2 台（`EC:C5:7F:80:28:A6` / `EC:C5:7F:81:DE:CD`）で内容は同一。アドレス種別は **public**。
 
@@ -2372,7 +2372,7 @@ if (meshDevAddrStr.equals(dev.getAddress())) {
 
 ### C30. ⚠️⚠️ 分割 PDU の実装が壊れている（不安定さの核心・C10 の詳細）
 
-[03-instability.md](03-instability.md) の I7 / C10 で指摘した欠陥を、
+[03-instability.md](analysis/03-instability.md) の I7 / C10 で指摘した欠陥を、
 コードレベルで完全に特定した。
 
 #### C30-1. 書式と純正アプリの実装
@@ -2415,7 +2415,7 @@ public byte[] processSegmentPDU(byte[] bArr) {
 | **5** | 送信元を区別していない（`MeshCommon` はシングルトン） | 器具が 2 台以上あると**別々の転送が同じバッファに混ざる** |
 
 **欠陥 1 が「グループ設定が保存できず、その後は初期化しないと直らない」の正体**
-（[03-instability.md](03-instability.md) I7）。アプリを再起動するか
+（[03-instability.md](analysis/03-instability.md) I7）。アプリを再起動するか
 `meshExited()` が走るまで、分割を伴う操作はすべて失敗し続ける。
 
 #### C30-3. `odelicd` の実装（全部直した）
@@ -2428,7 +2428,7 @@ public byte[] processSegmentPDU(byte[] bArr) {
 | タイムアウトなし | **3 秒** |
 | 送信元を区別しない | **MAC ごとに独立した状態** |
 
-検証（`tools/pi/` の仕組みで実 PDU を流して確認）:
+検証（`odelicd` に実 PDU を流して確認）:
 
 ```
 正常系 3 分割                     → ✅ 組立成功 → 通常の受信経路へ
@@ -2573,7 +2573,7 @@ C19-7 の「器具がアドレスを記憶している」という解釈も、�
 不安定さの真因がこちら側の実装にあったことが判った。**
 
 計測は 2 系統。
-`btmon -w` の HCI トレース（`python tools/btsnoop.py conn` / `latency` で解析）と、
+`btmon -w` の HCI トレース（`python docs/analysis/tools/btsnoop.py conn` / `latency` で解析）と、
 `odelicd` に組み込んだ内蔵計測（`GET /metrics`・`#M` 形式の journald ログ）。
 
 #### C33-1. 接続パラメータの実測（初めて測った）
@@ -2824,9 +2824,9 @@ sudo systemd-run --unit=odelic-btmon --collect btmon -w /var/log/odelic/trace.bt
 sudo systemctl stop odelic-btmon
 
 # リンク 1 本 1 行の表・接続パラメータ・切断理由
-python tools/btsnoop.py conn    artifacts/trace.btsnoop
+python docs/analysis/tools/btsnoop.py conn    artifacts/trace.btsnoop
 # ACL 送信 → 完了通知のレイテンシ（interval 別）
-python tools/btsnoop.py latency artifacts/trace.btsnoop
+python docs/analysis/tools/btsnoop.py latency artifacts/trace.btsnoop
 
 # 内蔵計測
 curl -s localhost:8080/metrics          # RTT 分布・到達率・リンク寿命・収束時間
@@ -2872,7 +2872,7 @@ C18-3 で PDU が平文だと判明し、C19 で **Raspberry Pi から自前実�
 ### どちらの案でも共通する改善
 
 不安定さの原因は**プロトコルではなく上位層の設計**にある
-（[03-instability.md](03-instability.md)）。以下は案の選択と無関係に実装できる。
+（[03-instability.md](analysis/03-instability.md)）。以下は案の選択と無関係に実装できる。
 
 - 状態を常時監視してキャッシュ（P1）→ Ping 応答と状態イベントを自前で蓄積
 - 期待状態まで送り続ける（P2）→ **純正アプリは 1 回しか送らない**（C18-5 で実証）

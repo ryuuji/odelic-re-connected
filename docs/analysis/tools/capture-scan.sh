@@ -2,7 +2,7 @@
 # 器具のアドバタイズを btmon でキャプチャする（フェーズ P1）。
 #
 # Raspberry Pi 上で実行する。btmon は btsnoop 形式（datalink 2001 = Linux Monitor）
-# で書き出すので、開発機に持ち帰って tools/btsnoop.py で解析できる。
+# で書き出すので、開発機に持ち帰って docs/analysis/tools/btsnoop.py で解析できる。
 #
 #   使い方: ./capture-scan.sh [秒数]   （既定 30 秒）
 #

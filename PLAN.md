@@ -50,23 +50,23 @@ export ODELIC_HOMEID=<HOMEID の 10 進>     # adv_raw.sh
 sudo ./install.sh <実際の 8 桁 ID> 8080    # odelicd は /etc/default/odelicd (0600) に保存
 ```
 
-調査で追加された情報 → [docs/01-findings.md](docs/01-findings.md)
+調査で追加された情報 → [docs/analysis/01-findings.md](docs/analysis/01-findings.md)
 
 # フェーズ
 
 | #  | フェーズ                                | 状態                                       | 詳細                                                                  |
 |----|-----------------------------------------|--------------------------------------------|-----------------------------------------------------------------------|
-| 0  | 環境構築（adb / jadx / btsnoop パーサ） | ✅ 完了                                    | [04](docs/04-analysis-procedure.md)                                   |
-| 1  | 既存アプリの APK 取得                   | ✅ 完了                                    | [04](docs/04-analysis-procedure.md)                                   |
+| 0  | 環境構築（adb / jadx / btsnoop パーサ） | ✅ 完了                                    | [04](docs/analysis/04-analysis-procedure.md)                                   |
+| 1  | 既存アプリの APK 取得                   | ✅ 完了                                    | [04](docs/analysis/04-analysis-procedure.md)                                   |
 | 2  | 静的解析（逆コンパイル）                | ✅ 完了                                    | [02](docs/02-protocol.md)                                             |
 | 3  | 動的解析（HCI スヌープログ）            | ✅ 実施・検証完了                          | [02 C18](docs/02-protocol.md)                                         |
 | 4  | プロトコルの文書化                      | ✅ **完了**（送受信の暗号まで）            | [02](docs/02-protocol.md)                                             |
 | 5  | **Raspberry Pi 版の実用化**             | ✅ **完了・常駐運用中**                    | [06](docs/06-raspberrypi-setup.md)                                    |
 | 5b | **状態取得（受信復号）**                | ✅ **完了**                                | [02 C23](docs/02-protocol.md) / [06 P6](docs/06-raspberrypi-setup.md) |
 | 5c | **Matter 対応（Google Home から操作）** | ✅ **完了・稼働中**                        | [07](docs/07-matter.md)                                               |
-| 5d | **設定ページとスマホ UI**               | ✅ **完了**（HTTPS + パスワード + 全画面） | [08](docs/08-web-ui.md) / [09 記録](docs/09-handoff-web-ui.md)        |
-| 6  | 新アプリの実装（Android）               | 未着手                                     | [05](docs/05-app-design.md)                                           |
-| 7  | 破壊的操作の解析（グループ設定・登録）  | 未着手                                     | [04](docs/04-analysis-procedure.md)                                   |
+| 5d | **設定ページとスマホ UI**               | ✅ **完了**（HTTPS + パスワード + 全画面） | [08](docs/08-web-ui.md) / [09 記録](docs/analysis/09-handoff-web-ui.md)        |
+| 6  | 新アプリの実装（Android）               | 未着手                                     | [05](docs/analysis/05-app-design.md)                                           |
+| 7  | 破壊的操作の解析（グループ設定・登録）  | 未着手                                     | [04](docs/analysis/04-analysis-procedure.md)                                   |
 
 ## スコープ外（今回は作らない）
 
@@ -84,7 +84,7 @@ sudo ./install.sh <実際の 8 桁 ID> 8080    # odelicd は /etc/default/odelic
 ## ⭐ 方式: HOMEID を純正アプリから引き継ぐ
 
 **器具の登録は純正アプリで済ませ、新アプリは 8 桁 ID を教えてもらって参加するだけ。**
-→ 詳細は [05 の「HOMEID の引き継ぎ方式」](docs/05-app-design.md)
+→ 詳細は [05 の「HOMEID の引き継ぎ方式」](docs/analysis/05-app-design.md)
 
 - 純正アプリの **メニュー画面に `ID:12345678` と表示されている**
   （`textView.setText("ID:" + Settings.HOMEID + Settings.PASSWORD)`）
@@ -96,7 +96,7 @@ sudo ./install.sh <実際の 8 桁 ID> 8080    # odelicd は /etc/default/odelic
 - 純正アプリと **同時に使える**（C28-3 で実証）
 
 不安定さの核心（ **分割 PDU の欠陥**）は [02 C30](docs/02-protocol.md) /
-[03 I7](docs/03-instability.md) で完全に特定し、受信側は `odelicd` で修正済み。
+[03 I7](docs/analysis/03-instability.md) で完全に特定し、受信側は `odelicd` で修正済み。
 
 # 判明したこと（2026-07-25 静的解析）
 
@@ -134,8 +134,8 @@ sudo ./install.sh <実際の 8 桁 ID> 8080    # odelicd は /etc/default/odelic
 7. 訂正: アドバタイズは数百 ms ではなく **21〜95 秒** 出しっぱなしだった
 
 → プロトコル詳細: [docs/02-protocol.md](docs/02-protocol.md)
-→ 不安定さの原因: [docs/03-instability.md](docs/03-instability.md)
-→ 実装方針: [docs/05-app-design.md](docs/05-app-design.md)
+→ 不安定さの原因: [docs/analysis/03-instability.md](docs/analysis/03-instability.md)
+→ 実装方針: [docs/analysis/05-app-design.md](docs/analysis/05-app-design.md)
 
 # TODO
 
@@ -207,7 +207,7 @@ sudo ./install.sh <実際の 8 桁 ID> 8080    # odelicd は /etc/default/odelic
 
 # 次の焦点：Android アプリの実装
 
-プロトコルは解明・実証が完了した。→ [05](docs/05-app-design.md) の手順に従う。
+プロトコルは解明・実証が完了した。→ [05](docs/analysis/05-app-design.md) の手順に従う。
 
 Pi での実証で判明した **設計上の必須事項**を反映する。
 
@@ -290,7 +290,7 @@ Pi での実証で判明した **設計上の必須事項**を反映する。
 
 C15-9 の換算式が実機の状態応答で裏付けられた。 → **P4「確認できるまで成功と言わない」が実装可能になった。**
 
-検証ツール: `python tools/decrypt_recv.py <btsnoopログ> 12345678`
+検証ツール: `python docs/analysis/tools/decrypt_recv.py <btsnoopログ> 12345678`
 
 ### ⭐⭐⭐ 他コントローラの操作も追従できる（実験 B・→ [02 C28](docs/02-protocol.md)）
 
@@ -327,7 +327,7 @@ Pi で観測して確認した。
 
 # `.so` の静的解析（2026-07-25）→ [docs/02-protocol.md](docs/02-protocol.md) C21
 
-`libnative-lib.so`（arm64）を capstone + lief（`tools/disasm.py`）で解析。
+`libnative-lib.so`（arm64）を capstone + lief（`docs/analysis/tools/disasm.py`）で解析。
 **シンボルが全て残っており、鍵導出を完全に解明した。**
 
 ⭐ **鍵 = HOMEID とパスワードを 1 バイトずつ交互に並べ、後半に固定文字列**

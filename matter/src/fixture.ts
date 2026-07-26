@@ -13,7 +13,7 @@
  * - ⚠️ **`endpoint.state` を後から読まない。**イベントで届いた値を意図の正とする。
  *   詳細は `wanted` / `intentSeq` のコメントと docs/07-matter.md の M9。
  * - ⭐ 未接続・状態未取得は `Reachable = false` で表す。Matter が用意している
- *   「分からない」の表現で、docs/03-instability.md の P4（嘘をつかない）と一致する。
+ *   「分からない」の表現で、docs/analysis/03-instability.md の P4（嘘をつかない）と一致する。
  */
 
 import { Endpoint } from "@matter/main";

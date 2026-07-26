@@ -17,16 +17,16 @@ ODELIC「CONNECTED LIGHTING for HOME」対応照明器具を、BLE 経由で制�
 | ファイル | 内容 |
 | --- | --- |
 | [PLAN.md](PLAN.md) | 全体ゴールとフェーズ |
-| [docs/01-findings.md](docs/01-findings.md) | 製品・純正アプリの調査結果（出典付きの事実整理） |
+| [docs/analysis/01-findings.md](docs/analysis/01-findings.md) | 製品・純正アプリの調査結果（出典付きの事実整理） |
 | [docs/02-protocol.md](docs/02-protocol.md) | 通信プロトコル：仮説と確定事項 |
-| [docs/03-instability.md](docs/03-instability.md) | 接続不安定の原因仮説と検証方法 |
-| [docs/04-analysis-procedure.md](docs/04-analysis-procedure.md) | 解析手順書（環境構築・静的解析・動的解析） |
-| [docs/05-app-design.md](docs/05-app-design.md) | 新アプリの設計方針 |
+| [docs/analysis/03-instability.md](docs/analysis/03-instability.md) | 接続不安定の原因仮説と検証方法 |
+| [docs/analysis/04-analysis-procedure.md](docs/analysis/04-analysis-procedure.md) | 解析手順書（環境構築・静的解析・動的解析） |
+| [docs/analysis/05-app-design.md](docs/analysis/05-app-design.md) | 新アプリの設計方針 |
 | [docs/06-raspberrypi-setup.md](docs/06-raspberrypi-setup.md) | Raspberry Pi による検証環境（照明のそばに常設） |
 | [docs/07-matter.md](docs/07-matter.md) | ⭐ **Matter 対応**（Google Home / Apple Home / Alexa から操作する） |
 | [docs/08-web-ui.md](docs/08-web-ui.md) | 設定ページとスマホ UI の設計（🚧 作りかけ） |
-| [docs/09-handoff-web-ui.md](docs/09-handoff-web-ui.md) | ⭐ **引き継ぎ**（設定ページの現在地・決定事項・踏んだ罠） |
-| [tools/pi/README.md](tools/pi/README.md) | ⚠️ Pi 上の 3 プロセスとビルド順序・テストの罠 |
+| [docs/analysis/09-handoff-web-ui.md](docs/analysis/09-handoff-web-ui.md) | ⭐ **引き継ぎ**（設定ページの現在地・決定事項・踏んだ罠） |
+| [docs/10-development.md](docs/10-development.md) | ⚠️ Pi 上の 3 プロセスとビルド順序・テストの罠 |
 
 ドキュメントは**事実（出典あり）／推測（仮説）／検証済み**を明示して書く。
 新しい情報が出たら該当ファイルに追記していく。
@@ -35,22 +35,22 @@ ODELIC「CONNECTED LIGHTING for HOME」対応照明器具を、BLE 経由で制�
 
 | ファイル | 内容 |
 | --- | --- |
-| [tools/pi/odelicd.py](tools/pi/odelicd.py) | ⭐ **常駐デーモン本体**（HTTP API で照明を制御） |
-| [tools/pi/matter/](tools/pi/matter/) | ⭐ **Matter ブリッジ**（Node.js + matter.js）。照明を Matter デバイスとして公開する。BLE は使わない |
-| [tools/pi/odelicd.service](tools/pi/odelicd.service) | systemd ユニット |
-| [tools/pi/install.sh](tools/pi/install.sh) | インストーラ（`sudo ./install.sh 12345678 8080`） |
-| [tools/pi/backup.sh](tools/pi/backup.sh) | ⭐ **状態のバックアップ**（Matter の fabric 鍵・器具の名簿・設定）。`--install` で毎日取得 |
-| [tools/pi/mesh_peripheral.py](tools/pi/mesh_peripheral.py) | 検証用の単発実行版（`--send blink` など） |
-| [tools/pi/run-p2.sh](tools/pi/run-p2.sh) | 上記を `btmon` 記録付きで実行するラッパー |
-| [tools/pi/adv_raw.sh](tools/pi/adv_raw.sh) | raw HCI で `ADV_PHONE` を送る（BlueZ D-Bus の代替） |
-| [tools/pi/gattdump.py](tools/pi/gattdump.py) | 接続中の器具の GATT を列挙して読む（→ C27） |
-| [tools/pi/capture-scan.sh](tools/pi/capture-scan.sh) | Pi でのスキャンキャプチャ |
-| [tools/btsnoop.py](tools/btsnoop.py) | HCI ログのパーサ。Android btsnoop と `btmon` 形式の両対応。⭐ `conn` でリンクと接続パラメータ・切断理由、`latency` で送信レイテンシ分布（C33） |
-| [tools/decrypt_recv.py](tools/decrypt_recv.py) | ⭐ **HCI ログのメッシュ PDU を復号して読む**（受信の暗号を解いた・C23） |
-| [tools/disasm.py](tools/disasm.py) | `libnative-lib.so` の逆アセンブル（関数名で指定・呼び出し先を名前解決） |
-| [tools/fw_analyze.py](tools/fw_analyze.py) | 器具ファームウェア（APK 同梱 OTA イメージ）の解析（→ C25） |
-| [tools/collect_logs.ps1](tools/collect_logs.ps1) | Android からのログ回収（`prepare` / `collect`） |
-| [tools/synth_btsnoop.py](tools/synth_btsnoop.py) | パーサ検証用の合成ログ生成 |
+| [odelicd/odelicd.py](odelicd/odelicd.py) | ⭐ **常駐デーモン本体**（HTTP API で照明を制御） |
+| [matter/](matter) | ⭐ **Matter ブリッジ**（Node.js + matter.js）。照明を Matter デバイスとして公開する。BLE は使わない |
+| [odelicd/odelicd.service](odelicd/odelicd.service) | systemd ユニット |
+| [odelicd/install.sh](odelicd/install.sh) | インストーラ（`sudo ./install.sh 12345678 8080`） |
+| [backup.sh](backup.sh) | ⭐ **状態のバックアップ**（Matter の fabric 鍵・器具の名簿・設定）。`--install` で毎日取得 |
+| [docs/analysis/tools/mesh_peripheral.py](docs/analysis/tools/mesh_peripheral.py) | 検証用の単発実行版（`--send blink` など） |
+| [docs/analysis/tools/run-p2.sh](docs/analysis/tools/run-p2.sh) | 上記を `btmon` 記録付きで実行するラッパー |
+| [docs/analysis/tools/adv_raw.sh](docs/analysis/tools/adv_raw.sh) | raw HCI で `ADV_PHONE` を送る（BlueZ D-Bus の代替） |
+| [docs/analysis/tools/gattdump.py](docs/analysis/tools/gattdump.py) | 接続中の器具の GATT を列挙して読む（→ C27） |
+| [docs/analysis/tools/capture-scan.sh](docs/analysis/tools/capture-scan.sh) | Pi でのスキャンキャプチャ |
+| [docs/analysis/tools/btsnoop.py](docs/analysis/tools/btsnoop.py) | HCI ログのパーサ。Android btsnoop と `btmon` 形式の両対応。⭐ `conn` でリンクと接続パラメータ・切断理由、`latency` で送信レイテンシ分布（C33） |
+| [docs/analysis/tools/decrypt_recv.py](docs/analysis/tools/decrypt_recv.py) | ⭐ **HCI ログのメッシュ PDU を復号して読む**（受信の暗号を解いた・C23） |
+| [docs/analysis/tools/disasm.py](docs/analysis/tools/disasm.py) | `libnative-lib.so` の逆アセンブル（関数名で指定・呼び出し先を名前解決） |
+| [docs/analysis/tools/fw_analyze.py](docs/analysis/tools/fw_analyze.py) | 器具ファームウェア（APK 同梱 OTA イメージ）の解析（→ C25） |
+| [docs/analysis/tools/collect_logs.ps1](docs/analysis/tools/collect_logs.ps1) | Android からのログ回収（`prepare` / `collect`） |
+| [docs/analysis/tools/synth_btsnoop.py](docs/analysis/tools/synth_btsnoop.py) | パーサ検証用の合成ログ生成 |
 
 ```bash
 # 実運用（常駐サービス）
@@ -67,20 +67,20 @@ ssh odelic-re-connected '/tmp/run.sh 60 --send blink --repeat'
 
 ```powershell
 # 照明のそばへ行く前 → 操作 → 戻ってきたら
-pwsh tools/collect_logs.ps1 prepare
-pwsh tools/collect_logs.ps1 collect
+pwsh docs/analysis/tools/collect_logs.ps1 prepare
+pwsh docs/analysis/tools/collect_logs.ps1 collect
 
 # 解析
-python tools/btsnoop.py summary  artifacts/btsnoop_hci-<stamp>.log
-python tools/btsnoop.py timeline artifacts/btsnoop_hci-<stamp>.log
+python docs/analysis/tools/btsnoop.py summary  artifacts/btsnoop_hci-<stamp>.log
+python docs/analysis/tools/btsnoop.py timeline artifacts/btsnoop_hci-<stamp>.log
 
 # 暗号化された PDU まで復号して読む（第 2 引数はアプリ表示の 8 桁 ID）
-python tools/decrypt_recv.py artifacts/btsnoop_hci-<stamp>.log 12345678
+python docs/analysis/tools/decrypt_recv.py artifacts/btsnoop_hci-<stamp>.log 12345678
 
 # ⭐ リンク 1 本 1 行の表（接続パラメータ・CPUR・切断理由・寿命分布）
-python tools/btsnoop.py conn    artifacts/pi-conn-<stamp>.btsnoop
+python docs/analysis/tools/btsnoop.py conn    artifacts/pi-conn-<stamp>.btsnoop
 # ⭐ ACL 送信 → 完了通知のレイテンシ（Connection Interval 別）
-python tools/btsnoop.py latency artifacts/pi-conn-<stamp>.btsnoop
+python docs/analysis/tools/btsnoop.py latency artifacts/pi-conn-<stamp>.btsnoop
 ```
 
 `summary` は ADV 種別・**HOMEID を 10 進数で**・器具の MAC を自動判定して表示します。
@@ -183,7 +183,7 @@ Developer Console にテスト VID/PID を登録し、オンネットワーク c
 | アドバタイズ / アドレス | ✅ 器具は**広告アドレス**で判定。Android でも問題なし（→ [C31](docs/02-protocol.md)） |
 | 器具ファームウェア | ◐ 暗号化なしだが独自コンテナで圧縮（→ [C25](docs/02-protocol.md)） |
 | **Matter ブリッジ** | ✅ **実装・Pi で稼働中・Google Home から操作可**（→ [07](docs/07-matter.md)） |
-| Android アプリ | ⏳ 未着手・**設計とスコープは確定**（→ [05](docs/05-app-design.md)） |
+| Android アプリ | ⏳ 未着手・**設計とスコープは確定**（→ [05](docs/analysis/05-app-design.md)） |
 | BLE スニファ | ⏸ 未手配（必要になったら nRF52840 Dongle を Pi に接続） |
 
 ### 解明したこと
@@ -217,7 +217,7 @@ Pi は Tailscale 経由で SSH でき、`btmon` で完全な HCI トレースが
 Android の bugreport 経由（`btsnooz`）はスキャン結果がフィルタで欠落するが、
 Pi ならその制約がない。
 
-詳細は [docs/04-analysis-procedure.md](docs/04-analysis-procedure.md) と
+詳細は [docs/analysis/04-analysis-procedure.md](docs/analysis/04-analysis-procedure.md) と
 [docs/06-raspberrypi-setup.md](docs/06-raspberrypi-setup.md) を参照。
 
 ## リポジトリ運用

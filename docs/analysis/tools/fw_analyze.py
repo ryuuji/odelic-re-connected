@@ -11,10 +11,10 @@
 
 使い方:
 
-    python tools/fw_analyze.py info    <fw>            # 全体像・文字列・基底アドレス推定
-    python tools/fw_analyze.py find    <fw> C0 70 71   # cmp #imm を探す（MSGID の分岐）
-    python tools/fw_analyze.py disasm  <fw> <offset> [n]
-    python tools/fw_analyze.py strings <fw> [最小長]
+    python docs/analysis/tools/fw_analyze.py info    <fw>            # 全体像・文字列・基底アドレス推定
+    python docs/analysis/tools/fw_analyze.py find    <fw> C0 70 71   # cmp #imm を探す（MSGID の分岐）
+    python docs/analysis/tools/fw_analyze.py disasm  <fw> <offset> [n]
+    python docs/analysis/tools/fw_analyze.py strings <fw> [最小長]
 
 `offset` はファイル先頭からのバイト位置（16 進なら 0x 付き）。
 """

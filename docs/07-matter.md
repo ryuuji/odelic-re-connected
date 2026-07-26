@@ -2,7 +2,7 @@
 
 `odelicd` を HTTP で叩く **Matter ブリッジ**を別プロセスで動かし、
 照明を標準の Matter デバイスとして公開する。実装は
-[`tools/pi/matter/`](../tools/pi/matter/)。
+[`matter/`](../matter)。
 
 | | |
 | --- | --- |
@@ -70,8 +70,8 @@ Matter CurrentLevel      実体                      odelicd 呼び出し
 
 - 下端 30%（`nightBandPercent`）を常夜灯 3 段に、残りを主灯 20 段に割り当てる
 - 状態を Matter に返すときの代表値は **13 / 38 / 63**（各帯の中央）
-- 実装は [`src/mapping.ts`](../tools/pi/matter/src/mapping.ts)。
-  往復は [`test/mapping.test.ts`](../tools/pi/matter/test/mapping.test.ts) で固定
+- 実装は [`src/mapping.ts`](../matter/src/mapping.ts)。
+  往復は [`test/mapping.test.ts`](../matter/test/mapping.test.ts) で固定
 
 ### なぜ 1 軸が正しいのか
 
@@ -182,7 +182,7 @@ Matter は `MoveToLevel` と `MoveToColorTemperature` を**別々に**送って�
 直接計算（→ C18-4）。メッシュ照明の能力判定は `UtilDeviceFW` にある。
 
 **[事実]** 逆コンパイル結果から転記した述語（実装は
-[`src/capability.ts`](../tools/pi/matter/src/capability.ts)）。
+[`src/capability.ts`](../common/src/capability.ts)）。
 
 | 述語 | 製品コード | Matter |
 | --- | --- | --- |
@@ -356,7 +356,7 @@ Google Home 上でオンライン表示され続ける**（実際に一度そう
 invoke へ Success を返している**。「送ったが収束しなかった（HTTP 504）」を
 invoke の失敗として返す方法がない。
 
-代わりに次の 2 つで正直さを保つ（→ [03-instability.md](03-instability.md) の P4）。
+代わりに次の 2 つで正直さを保つ（→ [03-instability.md](analysis/03-instability.md) の P4）。
 
 1. 失敗したら属性を**器具の実状態へ引き戻す**（Google Home の表示が元に戻る）
 2. 状態が分からない器具は `Reachable = false` にする
@@ -391,7 +391,7 @@ invoke を失敗させるにはクラスタのコマンドハンドラを個別�
 
 ## M9. 実装で踏んだ落とし穴
 
-統合テスト（[`test/bridge.test.ts`](../tools/pi/matter/test/bridge.test.ts)。偽 `odelicd` を
+統合テスト（[`test/bridge.test.ts`](../matter/test/bridge.test.ts)。偽 `odelicd` を
 localhost に立て、実際に ServerNode を起動する）が**型検査では出ない実バグを 4 つ**掘り出した。
 どれも実機で確実に起きるものだった。
 
@@ -562,7 +562,7 @@ Matter へ反映 OnOff=on level=217（主灯 80%）    ← ⚠️ 古い情報�
 
 ```bash
 # 開発機からソースを送る
-cd tools/pi/matter
+cd matter
 tar czf - src test package.json package-lock.json tsconfig.json \
     config.example.json install.sh odelic-matter.service |
   ssh odelic-re-connected "mkdir -p /tmp/odelic-matter-src && tar xzf - -C /tmp/odelic-matter-src"
@@ -733,7 +733,7 @@ Invoke « 3.onOff.on
 
 ### 状態のバックアップ
 
-[`tools/pi/backup.sh`](../tools/pi/backup.sh)。systemd タイマーで毎日 03:30。
+[`backup.sh`](../backup.sh)。systemd タイマーで毎日 03:30。
 
 | 対象 | 失うと何が起きるか |
 | --- | --- |
@@ -788,7 +788,7 @@ sudo sh -c 'rm -f /var/backups/odelic/odelic-*.tar.gz'   # ⭐ root 側で展開
 
 ```bash
 # 変換ロジック・能力判定・設定・ブリッジ統合（偽 odelicd を立てる）
-cd tools/pi/matter && npm test
+cd matter && npm test
 
 # GET /devices が BLE を使わないことの確認（送信カウンタが増えないこと）
 curl -s http://odelic-re-connected:8080/metrics > /tmp/before.json
@@ -836,7 +836,7 @@ curl -s http://odelic-re-connected:8080/metrics | python3 -m json.tool
 ## M12. ⭐ 管理 API（設定ページ向け・2026-07-26 追加）
 
 設定ページ [`odelic-web`](08-web-ui.md) が器具名と Matter の状態を読み書きする口。
-実装は [`matter/src/admin.ts`](../tools/pi/matter/src/admin.ts)。
+実装は [`matter/src/admin.ts`](../matter/src/admin.ts)。
 
 ### ⚠️⚠️ localhost 限定・無認証
 

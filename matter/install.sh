@@ -5,7 +5,7 @@
 #   例:     sudo ./install.sh http://127.0.0.1:8080
 #
 # 前提:
-#   - odelicd が動いていること（tools/pi/install.sh 済み）
+#   - odelicd が動いていること（odelicd/install.sh 済み）
 #   - Node.js 20 以降（無ければ導入方法を案内して終了する）
 #
 # ⭐ BLE は一切使わない。Pi の唯一の BLE アダプタは odelicd が握ったままでよい。

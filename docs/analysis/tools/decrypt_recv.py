@@ -19,7 +19,7 @@
 
 使い方:
 
-    python tools/decrypt_recv.py artifacts/btsnoop_hci-20260725-154002.log 12345678
+    python docs/analysis/tools/decrypt_recv.py artifacts/btsnoop_hci-20260725-154002.log 12345678
 
 `.so`（libnative-lib.so）の `cmd_handle` / `encry_data_handle` の
 逆アセンブルから再現した。詳細は docs/02-protocol.md の C21〜C23。
