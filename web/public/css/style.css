@@ -210,10 +210,17 @@ header h1 .sub {
     letter-spacing: 0.04em;
 }
 
+/*
+ * ⚠️⚠️ `overflow-x: auto` はスクロールコンテナを作るので、**上下もはみ出しを切る**
+ *    （片方の軸が `visible` でなくなると、もう片方も `visible` ではいられない）。
+ *    ⭐ そのため上に余白が無いと `:focus-visible` の枠
+ *    （`outline: 2px` + `outline-offset: 2px` = **4px**）が上辺で切れる。
+ *    ⭐ 左右は 10px、下は 8px あるので足りている。上だけが足りていなかった。
+ */
 nav {
     display: flex;
     gap: 4px;
-    padding: 0 max(10px, env(safe-area-inset-right)) 8px max(10px, env(safe-area-inset-left));
+    padding: 4px max(10px, env(safe-area-inset-right)) 8px max(10px, env(safe-area-inset-left));
     overflow-x: auto;
     scrollbar-width: none;
 }

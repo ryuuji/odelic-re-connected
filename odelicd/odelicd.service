@@ -9,9 +9,13 @@ Type=simple
 # ID（HOMEID + パスワード）は設定ファイルに置く。
 # パスワードを含むので unit ファイルには書かない。
 EnvironmentFile=/etc/default/odelicd
+# ⚠️⚠️ ODELIC_BIND が未設定だと systemd は `--bind` に**空の引数**を渡す。
+#    odelicd.py 側で空文字を 127.0.0.1（localhost 限定）に倒しているので、
+#    古い設定ファイルで更新しても API が LAN に露出することはない。
 ExecStart=/usr/bin/python3 /opt/odelicd/odelicd.py \
     --id ${ODELIC_ID} \
     --port ${ODELIC_PORT} \
+    --bind ${ODELIC_BIND} \
     --group ${ODELIC_GROUP} \
     --resend ${ODELIC_RESEND}
 

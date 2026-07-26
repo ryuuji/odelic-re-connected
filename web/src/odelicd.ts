@@ -32,6 +32,8 @@ export interface OdelicDevice {
 }
 
 export interface OdelicInfo {
+    /** `odelicd` 自身のバージョン。⚠️ 古い odelicd は返さないので `undefined` を許す */
+    version?: string;
     connected: boolean;
     joined: boolean;
     own_vaddr: string | null;

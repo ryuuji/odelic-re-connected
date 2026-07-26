@@ -1,9 +1,19 @@
 # odelic-re-connected
 
-ODELIC「CONNECTED LIGHTING for HOME」対応照明器具を、Raspberry Pi から操作するためのツールキットを提供します。Google Home / Apple Home / Alexa から音声で操作したり、スマートフォンからブラウザで操作できるようになります。不安定な公式アプリに依存せず、ODELIC製品を活用できるようになります。また、プロトコルを解析して独自実装しており、**その解析結果もすべて公開します。**
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Platform: Raspberry Pi 3+](https://img.shields.io/badge/platform-Raspberry%20Pi%203%2B-c51a4a?logo=raspberrypi&logoColor=white)](docs/06-raspberrypi-setup.md)
+[![Matter](https://img.shields.io/badge/Matter-Google%20Home%20%7C%20Apple%20Home%20%7C%20Alexa-1a7f37)](docs/07-matter.md)
+
+![](docs/images/cover.png)
+
+[「CONNECTED LIGHTING for HOME」](https://www.odelic.co.jp/products/connectedlighting/app/)に対応した照明器具を、Raspberry Pi から操作するためのツールキットです。
+
+Google Home / Apple Home / Alexa から音声で操作したり、スマートフォンからブラウザで操作できるようになります。不安定な公式アプリに依存せず、ODELIC製品を活用できるようになります。プロトコルの解析結果もすべて公開します。
 
 ```bash
-sudo ./install.sh 12345678      # 純正アプリのメニュー画面に出ている 8 桁 ID
+# Raspberry Pi で 1 行。12345678 は公式アプリのメニュー画面に出ている 8 桁 ID
+curl -fsSL https://raw.githubusercontent.com/ryuuji/odelic-re-connected/main/bootstrap.sh \
+  | sudo sh -s -- 12345678
 ```
 
 ---
@@ -14,13 +24,28 @@ sudo ./install.sh 12345678      # 純正アプリのメニュー画面に出て�
 | --- | --- |
 | 🎙 **音声で操作** | 「つけて」「15% にして」「電球色にして」— Matter デバイスとして公開するので Google Home / Apple Home / Alexa から使える |
 | 📱 **スマホから操作** | ブラウザで開くだけ（アプリ不要）。HTTPS + パスワード |
-| ⚡ **待たされない** | 純正アプリは起動から操作可能まで約 7 秒。こちらは**常時接続を維持していて 0 秒**、1 操作 **5〜8 ミリ秒** |
+| ⚡ **待たされない** | 公式アプリは起動から操作可能まで約 7 秒。こちらは**常時接続を維持していて 0 秒**、1 操作 **5〜8 ミリ秒** |
 | ✅ **効いたことを確認する** | 器具に状態を問い合わせて、**実際にその状態になるまで再送**する。「送ったから成功」とは言わない |
-| 🌙 **常夜灯も操作・状態取得** | ⭐ 純正アプリは常夜灯の状態バイトを読んでいない。こちらは読んで反映する |
-| 🤝 **純正アプリと共存する** | 同時に使える。純正アプリでの操作も**観測して状態に反映**する |
-| 🔌 **HTTP API** | `curl -X POST http://<pi>:8080/on` だけで動く。自動化に組み込める |
+| 🌙 **常夜灯も操作・状態取得** | ⭐ 公式アプリは常夜灯の状態バイトを読んでいない。こちらは読んで反映する |
+| 🤝 **公式アプリと共存する** | 同時に使える。公式アプリでの操作も**観測して状態に反映**する |
+| 🔌 **HTTP API** | `curl -X POST http://localhost:8080/on` だけで動く。自動化に組み込める。⚠️ **既定は localhost 限定**（認証が無いため）。LAN に出すかは設定画面で選べる |
+| 💾 **バックアップと復元** | 設定画面から ZIP で落とせる。Matter の登録・器具名・ホーム ID・CA の鍵をまとめて退避／復元 |
 
-<!-- ⚠️ スクリーンショット未撮影。撮影リストは docs/images/README.md -->
+### 設定ページ（スマートフォンのブラウザから）
+
+| 照明 | 状態 | 設定 |
+| --- | --- | --- |
+| [![照明](docs/images/web-lights.png)](docs/images/web-lights.png) | [![状態](docs/images/web-status.png)](docs/images/web-status.png) | [![設定](docs/images/web-settings.png)](docs/images/web-settings.png) |
+| 明るさ・色温度・常夜灯を 1 本のスライダーで | 到達率・応答時間・リンクの履歴 | 器具名・ホーム ID・API の公開範囲・バックアップ |
+
+| Matter | ログ |
+| --- | --- |
+| [![Matter](docs/images/web-matter.png)](docs/images/web-matter.png) | [![ログ](docs/images/web-logs.png)](docs/images/web-logs.png) |
+| 登録状況と手入力コード | ⭐ **秘密は伏せてから表示**（`•• •• •• ••`） |
+
+### 全体の構成
+
+![構成](docs/images/system-diagram.png)
 
 ---
 
@@ -33,12 +58,12 @@ sudo ./install.sh 12345678      # 純正アプリのメニュー画面に出て�
 | Raspberry Pi | **Pi 3 以降**（BLE 内蔵）。Pi 3 の RAM 905 MB で 3 プロセスが共存する |
 | OS | Raspberry Pi OS（Debian 13 で確認）。Node.js 20 以降が apt から入ること |
 | 設置場所 | ⚠️ **照明器具の BLE が届くところ。**メッシュなので 1 台に届けば全体に流れる |
-| 8 桁 ID | 純正アプリのメニュー画面に `ID:12345678` と表示されている番号 |
-| 器具の登録 | ⭐ **純正アプリで済ませておく。**このプロジェクトは登録済みのメッシュに参加するだけ |
+| 8 桁 ID | 公式アプリのメニュー画面に `ID:12345678` と表示されている番号 |
+| 器具の登録 | ⭐ **公式アプリで済ませておく。**このプロジェクトは登録済みのメッシュに参加するだけ |
 
 ### ⭐ 8 桁 ID の調べ方
 
-**純正アプリ（`jp.co.odelic.smt.remote10`）のメニュー画面に `ID:12345678` と
+**公式アプリ（`jp.co.odelic.smt.remote10`）のメニュー画面に `ID:12345678` と
 表示されている 8 桁の番号**がそれ。上位 4 桁が HOMEID、下位 4 桁がメッシュの
 パスワードになっている（→ [02 C16](docs/02-protocol.md)）。
 
@@ -48,9 +73,18 @@ sudo ./install.sh 12345678      # 純正アプリのメニュー画面に出て�
 ### インストール
 
 ```bash
+# ← 12345678 を自分の 8 桁 ID に置き換える
+curl -fsSL https://raw.githubusercontent.com/ryuuji/odelic-re-connected/main/bootstrap.sh \
+  | sudo sh -s -- 12345678
+```
+
+⭐ `bootstrap.sh` は**最新のリリース**（無ければ `main`）を `/usr/local/src` に展開して
+`install.sh` を呼ぶだけ。中身を先に読みたい・`git` で追いたい場合は手で入れてもよい。
+
+```bash
 git clone https://github.com/ryuuji/odelic-re-connected.git
 cd odelic-re-connected
-sudo ./install.sh 12345678              # ← 自分の 8 桁 ID に置き換える
+sudo ./install.sh 12345678
 ```
 
 これで 3 つの systemd サービスが入って自動起動する。所要 5〜10 分（`npm` が遅い）。
@@ -58,11 +92,11 @@ sudo ./install.sh 12345678              # ← 自分の 8 桁 ID に置き換え
 ```bash
 sudo ./install.sh 12345678 --skip-matter    # Matter は要らない
 sudo ./install.sh 12345678 --skip-web       # 設定ページは要らない
-sudo ./install.sh 12345678 --with-backup    # ⭐ 毎日 03:30 に状態をバックアップ
 ```
 
-⚠️ **`--with-backup` を勧める。**Matter の fabric 鍵とローカル CA の秘密鍵を失うと、
-**全端末で登録をやり直す**ことになる。
+⭐ **入れたら設定ページからバックアップを取っておくこと。**Matter の fabric 鍵と
+ローカル CA の秘密鍵を失うと、**全端末で登録をやり直す**ことになる。
+→ 設定タブの「バックアップと復元」から ZIP で落とせる（→ [08 W13](docs/08-web-ui.md)）。
 
 → 詳しい手順・Pi のセットアップから: [docs/06-raspberrypi-setup.md](docs/06-raspberrypi-setup.md)
 
@@ -84,6 +118,7 @@ curl http://localhost:8080/metrics        # RTT 分布・到達率・リンク�
 ## 3 つの成果物
 
 ```
+bootstrap.sh        ← 1 行インストーラ（ソースを取って install.sh を呼ぶ）
 install.sh          ← 一括インストーラ（下の 3 つを正しい順で入れる）
 odelicd/            ← ① ローカル API（Python・BLE を握る唯一のプロセス）
 common/             ← 共有パッケージ @odelic/common（プロトコル由来の事実）
@@ -98,7 +133,6 @@ docs/               ← プロトコル文書と解析の記録
 | ⭐ [`matter/`](matter/) | **Matter ブリッジ。**照明を標準の Matter デバイスとして公開する。⭐ BLE は使わず `odelicd` の HTTP API だけを叩くので、アダプタの競合が起きない | [07](docs/07-matter.md) |
 | ⭐ [`web/`](web/) | **設定ページとスマホ UI。**HTTPS（ローカル CA + 自己署名）+ パスワード認証。照明の操作・器具名・Matter の状態・ログ閲覧・ホーム ID の変更 | [08](docs/08-web-ui.md) |
 | [`common/`](common/) | matter と web が共有する「プロトコル由来の事実」（明るさの段・器具の能力判定・MAC の正規化・JSONC） | [10](docs/10-development.md) |
-| [`backup.sh`](backup.sh) | ⚠️ 失うと復旧が重いもの（Matter の fabric 鍵・器具の名簿・CA の秘密鍵・設定）だけを取る | [07 M10c](docs/07-matter.md) |
 
 ⚠️ **順序に意味がある**（`odelicd` → `matter` → `web`）。
 `file:../common` の参照も含めて、[docs/10-development.md](docs/10-development.md) に罠がまとまっている。
@@ -109,7 +143,7 @@ docs/               ← プロトコル文書と解析の記録
 
 `btmon` の HCI トレースと内蔵計測（`GET /metrics`）で測った値。
 
-| | 純正アプリ | **これ** |
+| | 公式アプリ | **これ** |
 | --- | --- | --- |
 | 起動〜操作可能 | 約 7 秒 | **0 秒**（常時接続維持） |
 | 1 操作の所要時間 | 不明・確認なし | **5〜8 ミリ秒** |
@@ -158,7 +192,7 @@ PDU 形式・照明コマンドの全バイト・認証・暗号（送受信と�
 ```bash
 (cd common && npm install && npm run build && npm test)   #  48 件
 (cd matter && npm install && npm test)                    # 114 件
-(cd web    && npm install && npm test)                    # 132 件
+(cd web    && npm install && npm test)                    # 155 件
 ```
 
 ⭐ **BLE も Pi も要らない。**開発機で完結する（偽 `odelicd` を立てて検証する）。
@@ -197,7 +231,7 @@ PDU 形式・照明コマンドの全バイト・認証・暗号（送受信と�
 [MIT License](LICENSE)
 
 開発者が所有する照明器具を相互運用（interoperability）するための解析であり、
-**プロトコル知識をもとにした独自実装**です。純正アプリのコードやアセットは
+**プロトコル知識をもとにした独自実装**です。公式アプリのコードやアセットは
 一切含まれません。
 
 ⚠️ ODELIC / Pairlink とは無関係の非公式プロジェクトです。**自己責任で使ってください。**

@@ -160,9 +160,23 @@ echo "=== HTTPS 証明書 ==="
 
 # --------------------------------------------------- 特権ヘルパと sudoers
 echo
-echo "=== メッシュ ID の特権ヘルパ ==="
+echo "=== 特権ヘルパ（sudoers で許可する 3 本） ==="
 install -m 0755 -o root -g root "$SRC/set-id.sh" "$DEST/set-id.sh"
-echo "  $DEST/set-id.sh (0755 root)"
+echo "  $DEST/set-id.sh (0755 root)          メッシュの 8 桁 ID"
+install -m 0755 -o root -g root "$SRC/set-api.sh" "$DEST/set-api.sh"
+echo "  $DEST/set-api.sh (0755 root)         API の公開範囲"
+install -m 0755 -o root -g root "$SRC/backup-helper.py" "$DEST/backup-helper.py"
+echo "  $DEST/backup-helper.py (0755 root)   バックアップと復元"
+
+# ⚠️⚠️ ヘルパが実際に動くことを確かめる。⭐ **`--targets` は root を要求しない**ので、
+#    ここで python の不足（や shebang の CRLF）に気付ける。
+#    気付かないと「設定画面のボタンだけが動かない」という分かりにくい壊れ方になる
+if ! "$DEST/backup-helper.py" --targets >/dev/null 2>&1; then
+    echo "エラー: $DEST/backup-helper.py が実行できません" >&2
+    echo "  python3 があるか、改行が LF かを確認してください" >&2
+    exit 1
+fi
+echo "  ⭐ backup-helper.py の動作を確認しました"
 
 # ⭐ パスワードを見失ったときの入口。ログイン画面がこの絶対パスを案内している。
 #    ⚠️ こちらは sudoers に入れない（人が sudo で叩くもの）
@@ -172,10 +186,19 @@ echo "  $DEST/reset-password.sh (0755 root・⚠️ sudoers には入れない)"
 SUDOERS=/etc/sudoers.d/odelic-web
 TMP_SUDOERS="$(mktemp)"
 cat > "$TMP_SUDOERS" <<EOF
-# odelic-web がメッシュの 8 桁 ID を設定するための唯一の許可。
+# odelic-web が root で実行してよい**この 3 本だけ**。
+#
 # ⚠️⚠️ ここに汎用スクリプト（install.sh など）を足してはいけない。
 #    引数で任意のことができると Web の脆弱性がそのまま root になる。
+# ⭐ sudoers は**パスだけ**を許可するので、argv の検証は各スクリプトの責務。
+#    3 本はいずれも「引数はちょうど 1 つ・既知のものだけ」を最初に検査している。
+#
+#   set-id.sh         8 桁の数字 / --rollback / --status
+#   set-api.sh        local / lan / --status
+#   backup-helper.py  --targets / --info / --export / --restore
 $SVCUSER ALL=(root) NOPASSWD: $DEST/set-id.sh
+$SVCUSER ALL=(root) NOPASSWD: $DEST/set-api.sh
+$SVCUSER ALL=(root) NOPASSWD: $DEST/backup-helper.py
 EOF
 # ⚠️ 壊れた sudoers を置くと**誰も sudo できなくなる**。必ず検証してから設置する
 if visudo -cf "$TMP_SUDOERS" >/dev/null; then

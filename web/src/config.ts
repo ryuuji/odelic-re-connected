@@ -27,6 +27,10 @@ export interface WebConfig {
     sessionMaxAgeSec: number;
     waitMs: number;
     setIdHelper: string;
+    /** ⚠️ sudoers で許可するヘルパ: API の公開範囲（`set-api.sh`） */
+    setApiHelper: string;
+    /** ⚠️ sudoers で許可するヘルパ: バックアップと復元（`backup-helper.py`） */
+    backupHelper: string;
     /** ⚠️ ログ画面で journalctl に渡してよい unit 名のホワイトリスト */
     logUnits: string[];
     logMaxLines: number;
@@ -42,6 +46,8 @@ export const DEFAULT_CONFIG: WebConfig = {
     sessionMaxAgeSec: 7 * 24 * 60 * 60,
     waitMs: 1500,
     setIdHelper: "/opt/odelic-web/set-id.sh",
+    setApiHelper: "/opt/odelic-web/set-api.sh",
+    backupHelper: "/opt/odelic-web/backup-helper.py",
     logUnits: ["odelicd", "odelic-matter", "odelic-web"],
     logMaxLines: 500,
 };
@@ -71,6 +77,8 @@ export function loadConfig(path: string | undefined, warn: (msg: string) => void
             case "tlsDir":
             case "stateDir":
             case "setIdHelper":
+            case "setApiHelper":
+            case "backupHelper":
                 if (typeof value === "string" && value !== "") cfg[key] = value;
                 else warn(`設定 ${key} は空でない文字列で指定してください`);
                 break;

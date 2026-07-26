@@ -28,6 +28,8 @@ import { OdelicClient } from "./odelicd.js";
 import { createHandler } from "./routes.js";
 import { startListener } from "./server.js";
 import { SetId } from "./setid.js";
+import { ApiScope } from "./apiscope.js";
+import { Backup } from "./backup.js";
 
 export const WEB_VERSION = "0.1.0";
 
@@ -114,6 +116,8 @@ async function main(): Promise<number> {
     const bridge = new BridgeClient(config.bridgeAdmin, log);
     const journal = new Journal({ allowedUnits: config.logUnits, maxLines: config.logMaxLines });
     const setId = new SetId({ helper: config.setIdHelper, log });
+    const apiScope = new ApiScope({ helper: config.setApiHelper, log });
+    const backup = new Backup({ helper: config.backupHelper, log });
 
     const handler = createHandler({
         config,
@@ -122,6 +126,8 @@ async function main(): Promise<number> {
         bridge,
         journal,
         setId,
+        apiScope,
+        backup,
         publicDir,
         caPath,
         version: WEB_VERSION,

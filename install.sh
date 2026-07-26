@@ -5,7 +5,6 @@
 #   sudo ./install.sh <8桁ID> 8080
 #   sudo ./install.sh <8桁ID> --skip-matter   # Matter は入れない
 #   sudo ./install.sh <8桁ID> --skip-web      # 設定ページは入れない
-#   sudo ./install.sh <8桁ID> --with-backup   # 毎日 03:30 のバックアップも仕込む
 #
 # 8 桁 ID は公式アプリのメニュー画面に出ている番号（上位 4 桁 = HOMEID、
 # 下位 4 桁 = メッシュのパスワード）。→ README の「8 桁 ID の調べ方」
@@ -33,7 +32,6 @@ ID=""
 PORT=8080
 SKIP_MATTER=0
 SKIP_WEB=0
-WITH_BACKUP=0
 
 usage() {
     # ⚠️ 冒頭コメントの「使い方」だけを出す。行数は上のコメントブロックと連動する
@@ -45,7 +43,6 @@ while [ $# -gt 0 ]; do
     case "$1" in
         --skip-matter) SKIP_MATTER=1 ;;
         --skip-web)    SKIP_WEB=1 ;;
-        --with-backup) WITH_BACKUP=1 ;;
         -h|--help)     usage 0 ;;
         -*)            echo "エラー: 知らないオプション: $1" >&2; usage ;;
         *)
@@ -80,7 +77,6 @@ fi
 NEEDED=("$SRC/odelicd/install.sh")
 [ "$SKIP_MATTER" = 0 ] && NEEDED+=("$SRC/matter/install.sh" "$SRC/common/install.sh")
 [ "$SKIP_WEB" = 0 ]    && NEEDED+=("$SRC/web/install.sh" "$SRC/common/install.sh")
-[ "$WITH_BACKUP" = 1 ] && NEEDED+=("$SRC/backup.sh")
 for f in "${NEEDED[@]}"; do
     if [ ! -f "$f" ]; then
         echo "エラー: $f がありません（リポジトリのルートから実行してください）" >&2
@@ -97,7 +93,6 @@ echo "  ホーム ID     : ${ID:0:4}****        （下位 4 桁はパスワー�
 echo "  odelicd       : $ODELICD_URL"
 echo "  Matter ブリッジ: $([ "$SKIP_MATTER" = 0 ] && echo '入れる' || echo '入れない（--skip-matter）')"
 echo "  設定ページ     : $([ "$SKIP_WEB" = 0 ] && echo '入れる' || echo '入れない（--skip-web）')"
-echo "  バックアップ   : $([ "$WITH_BACKUP" = 1 ] && echo '毎日 03:30' || echo '仕込まない')"
 echo
 
 # ------------------------------------------------------------ ① odelicd
@@ -138,16 +133,6 @@ if [ "$SKIP_WEB" = 0 ]; then
     WEB_PASSWORD="$(sed -n 's/^[[:space:]]*⭐ パスワード:[[:space:]]*//p' "$WEB_LOG" | head -1)"
     rm -f "$WEB_LOG"
     trap - EXIT
-fi
-
-# ------------------------------------------------------------ バックアップ
-
-if [ "$WITH_BACKUP" = 1 ]; then
-    echo
-    echo "################################################################"
-    echo "#  バックアップ（Matter の fabric 鍵・器具の名簿・設定・CA の鍵）"
-    echo "################################################################"
-    "$SRC/backup.sh" --install
 fi
 
 # ------------------------------------------------------------ まとめ
@@ -197,9 +182,11 @@ echo
 echo "状態の確認:"
 echo "  sudo systemctl status odelicd odelic-matter odelic-web"
 echo "  curl $ODELICD_URL/metrics    # 到達率・RTT 分布・リンク寿命"
-if [ "$WITH_BACKUP" = 0 ]; then
+if [ "$SKIP_WEB" = 0 ]; then
     echo
-    echo "⭐ バックアップを仕込んでいません。Matter の fabric 鍵と CA の鍵を失うと"
-    echo "   全端末で登録をやり直すことになります:  sudo ./backup.sh --install"
+    echo "⭐⭐ 最初にバックアップを取ってください。"
+    echo "   設定ページ →「設定」タブ →「バックアップと復元」→ ダウンロード"
+    echo "   Matter の fabric 鍵とローカル CA の鍵を失うと、全端末で登録をやり直します"
+    echo "   ⚠️ 落ちた ZIP には秘密情報が入ります。他人に渡さないでください"
 fi
 echo

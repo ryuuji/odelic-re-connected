@@ -27,6 +27,8 @@ import { Journal } from "../src/journal.js";
 import { OdelicClient } from "../src/odelicd.js";
 import { createHandler } from "../src/routes.js";
 import { SetId } from "../src/setid.js";
+import { ApiScope } from "../src/apiscope.js";
+import { Backup } from "../src/backup.js";
 
 const PASSWORD = "test-password-1";
 
@@ -258,6 +260,11 @@ let auth: Auth;
 let setIdArgs: string[][];
 let setIdReply: { stdout: string; stderr: string; code: number };
 let journalArgs: string[][];
+let apiScopeArgs: string[][];
+let apiScopeReply: { stdout: string; stderr: string; code: number };
+let backupArgs: string[][];
+let backupStdin: Buffer | null;
+let backupReply: { stdout: Buffer; stderr: string; code: number };
 
 before(async () => {
     dir = mkdtempSync(join(tmpdir(), "odelic-web-routes-"));
@@ -280,6 +287,11 @@ before(async () => {
     setIdArgs = [];
     setIdReply = { stdout: "id=12345678 rollback=yes\n", stderr: "", code: 0 };
     journalArgs = [];
+    apiScopeArgs = [];
+    apiScopeReply = { stdout: "scope=local bind=127.0.0.1 port=8080\n", stderr: "", code: 0 };
+    backupArgs = [];
+    backupStdin = null;
+    backupReply = { stdout: Buffer.from("{}"), stderr: "", code: 0 };
 
     const handler = createHandler({
         config: { ...DEFAULT_CONFIG, waitMs: 0, stateDir: dir },
@@ -303,6 +315,22 @@ before(async () => {
             run: async args => {
                 setIdArgs.push(args);
                 return setIdReply;
+            },
+        }),
+        // ⚠️ 特権ヘルパは呼ばない。ルーティングの検査に本物の sudo を混ぜない
+        apiScope: new ApiScope({
+            helper: "/opt/odelic-web/set-api.sh",
+            run: async args => {
+                apiScopeArgs.push(args);
+                return apiScopeReply;
+            },
+        }),
+        backup: new Backup({
+            helper: "/opt/odelic-web/backup-helper.py",
+            run: async (args, stdin) => {
+                backupArgs.push(args);
+                backupStdin = stdin ?? null;
+                return backupReply;
             },
         }),
         publicDir: join(dir, "public"),
@@ -332,6 +360,13 @@ beforeEach(() => {
     odelicd.joined = true;
     odelicd.absent.clear();
     odelicd.failNextWith = null;
+    // ⚠️ 特権ヘルパの呼び出し記録も**毎回**消す。before() で 1 回だけ消していたら
+    //    前のテストの `--info` が残って「--export だけを呼んだ」の検査が落ちた
+    apiScopeArgs.length = 0;
+    apiScopeReply = { stdout: "scope=local bind=127.0.0.1 port=8080\n", stderr: "", code: 0 };
+    backupArgs.length = 0;
+    backupStdin = null;
+    backupReply = { stdout: Buffer.from("{}"), stderr: "", code: 0 };
     odelicd.devices = [
         {
             key: "09 00 00 00",
@@ -907,5 +942,184 @@ describe("パスワードの変更", () => {
         assert.equal((await get("/api/state", cookie)).status, 401);
         // 後片付け
         auth.setPassword(PASSWORD);
+    });
+});
+
+// ------------------------------------------- API の公開範囲とバックアップ
+
+describe("API の公開範囲（/api/apiscope）", () => {
+    it("今の範囲を返す", async () => {
+        const cookie = await login();
+        const res = await get("/api/apiscope", cookie);
+        assert.equal(res.status, 200);
+        const body = (await res.json()) as { ok: boolean; status: { scope: string; bind: string; port: number } };
+        assert.equal(body.ok, true);
+        assert.equal(body.status.scope, "local");
+        assert.equal(body.status.bind, "127.0.0.1");
+        assert.equal(body.status.port, 8080);
+        assert.deepEqual(apiScopeArgs, [["--status"]]);
+    });
+
+    it("⚠️ ヘルパが読めない出力を返したら status を null にする（local と嘘をつかない）", async () => {
+        const cookie = await login();
+        apiScopeReply = { stdout: "なにか壊れた出力\n", stderr: "", code: 0 };
+        const res = await get("/api/apiscope", cookie);
+        const body = (await res.json()) as { ok: boolean; status: unknown };
+        assert.equal(body.ok, false);
+        assert.equal(body.status, null);
+    });
+
+    it("local / lan を渡せる", async () => {
+        const cookie = await login();
+        for (const scope of ["local", "lan"]) {
+            apiScopeArgs.length = 0;
+            const res = await post("/api/apiscope", { scope }, cookie);
+            assert.equal(res.status, 200, await res.text());
+            assert.deepEqual(apiScopeArgs, [[scope]]);
+        }
+    });
+
+    it("⚠️⚠️ 任意のアドレスは渡せない（ヘルパを呼ばずに 400）", async () => {
+        const cookie = await login();
+        for (const scope of ["0.0.0.0", "::", "127.0.0.1", "--status", "", null, 1]) {
+            apiScopeArgs.length = 0;
+            const res = await post("/api/apiscope", { scope }, cookie);
+            assert.equal(res.status, 400, `通ってしまった: ${JSON.stringify(scope)}`);
+            assert.deepEqual(apiScopeArgs, [], `ヘルパを呼んでしまった: ${JSON.stringify(scope)}`);
+        }
+    });
+
+    it("⚠️ 認証なしでは触れない", async () => {
+        assert.equal((await get("/api/apiscope")).status, 401);
+        assert.equal((await post("/api/apiscope", { scope: "lan" })).status, 401);
+    });
+
+    it("⚠️ CSRF ヘッダが無ければ 403（ヘルパを呼ばない）", async () => {
+        const cookie = await login();
+        apiScopeArgs.length = 0;
+        const res = await fetch(`${base}/api/apiscope`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Cookie: cookie },
+            body: JSON.stringify({ scope: "lan" }),
+        });
+        assert.equal(res.status, 403);
+        assert.deepEqual(apiScopeArgs, []);
+    });
+});
+
+describe("バックアップと復元（/api/backup）", () => {
+    /** ⭐ 本物と同じ形（`PK\x03\x04` で始まる）の最小 ZIP。中身は見ない */
+    const fakeZip = (): Buffer => Buffer.concat([Buffer.from([0x50, 0x4b, 0x03, 0x04]), Buffer.alloc(60)]);
+
+    it("何が入るかを返す", async () => {
+        const cookie = await login();
+        backupReply = {
+            stdout: Buffer.from(JSON.stringify({ formatVersion: 1, targets: [], files: 7, bytes: 2048 })),
+            stderr: "",
+            code: 0,
+        };
+        const res = await get("/api/backup", cookie);
+        assert.equal(res.status, 200);
+        const body = (await res.json()) as { ok: boolean; info: { files: number } };
+        assert.equal(body.ok, true);
+        assert.equal(body.info.files, 7);
+        assert.deepEqual(backupArgs, [["--info"]]);
+    });
+
+    it("⭐ ZIP をダウンロードできる（POST・no-store・添付）", async () => {
+        const cookie = await login();
+        backupReply = { stdout: fakeZip(), stderr: "", code: 0 };
+        const res = await post("/api/backup/export", {}, cookie);
+        assert.equal(res.status, 200);
+        assert.equal(res.headers.get("content-type"), "application/zip");
+        // ⚠️⚠️ 秘密情報の塊なのでキャッシュさせない
+        assert.equal(res.headers.get("cache-control"), "no-store");
+        assert.match(res.headers.get("content-disposition") ?? "", /attachment; filename="odelic-backup-.*\.zip"/);
+        assert.equal((await res.arrayBuffer()).byteLength, 64);
+        assert.deepEqual(backupArgs, [["--export"]]);
+    });
+
+    it("⚠️ ダウンロードは GET では取れない（他サイトのリンクで始まらないように）", async () => {
+        const cookie = await login();
+        assert.equal((await get("/api/backup/export", cookie)).status, 404);
+    });
+
+    it("⭐ ZIP を送ると復元してサービスを再起動する", async () => {
+        const cookie = await login();
+        backupReply = { stdout: Buffer.from(JSON.stringify({ restored: 12 })), stderr: "", code: 0 };
+        const zip = fakeZip();
+        const res = await fetch(`${base}/api/backup/restore`, {
+            method: "POST",
+            headers: { "Content-Type": "application/zip", "X-Odelic-Request": "1", Cookie: cookie },
+            body: zip,
+        });
+        // ⚠️ `assert.equal(..., await res.text())` と書くとメッセージ引数が
+        //    先に評価されて**ボディを消費**し、続く res.json() が落ちる。1 回だけ読む
+        const text = await res.text();
+        assert.equal(res.status, 200, text);
+        assert.equal((JSON.parse(text) as { restored: number }).restored, 12);
+        assert.deepEqual(backupArgs, [["--restore"]]);
+        // ⭐ 受け取ったバイト列をそのままヘルパの標準入力へ渡している
+        assert.deepEqual(backupStdin, zip);
+    });
+
+    it("⚠️ ZIP でないものはヘルパを呼ばずに断る", async () => {
+        const cookie = await login();
+        backupArgs.length = 0;
+        const res = await fetch(`${base}/api/backup/restore`, {
+            method: "POST",
+            headers: { "Content-Type": "application/zip", "X-Odelic-Request": "1", Cookie: cookie },
+            body: Buffer.from("これは ZIP ではありません"),
+        });
+        assert.equal(res.status, 400);
+        assert.deepEqual(backupArgs, [], "ヘルパを呼んでしまった");
+    });
+
+    it("⚠️ 空のボディも断る", async () => {
+        const cookie = await login();
+        backupArgs.length = 0;
+        const res = await fetch(`${base}/api/backup/restore`, {
+            method: "POST",
+            headers: { "Content-Type": "application/zip", "X-Odelic-Request": "1", Cookie: cookie },
+            body: Buffer.alloc(0),
+        });
+        assert.equal(res.status, 400);
+        assert.deepEqual(backupArgs, []);
+    });
+
+    it("⚠️ ヘルパの失敗理由をそのまま返す（「復元できません」で終わらせない）", async () => {
+        const cookie = await login();
+        backupReply = {
+            stdout: Buffer.alloc(0),
+            stderr: "エラー: 復元対象の外を指しています: /etc/passwd\n",
+            code: 1,
+        };
+        const res = await fetch(`${base}/api/backup/restore`, {
+            method: "POST",
+            headers: { "Content-Type": "application/zip", "X-Odelic-Request": "1", Cookie: cookie },
+            body: fakeZip(),
+        });
+        assert.equal(res.status, 400);
+        assert.match(((await res.json()) as { detail: string }).detail, /復元対象の外/);
+    });
+
+    it("⚠️ 認証なしでは触れない", async () => {
+        assert.equal((await get("/api/backup")).status, 401);
+        assert.equal((await post("/api/backup/export", {})).status, 401);
+        assert.equal((await post("/api/backup/restore", {})).status, 401);
+    });
+
+    it("⚠️ CSRF ヘッダが無ければ 403（ヘルパを呼ばない）", async () => {
+        const cookie = await login();
+        backupArgs.length = 0;
+        for (const p of ["/api/backup/export", "/api/backup/restore"]) {
+            const res = await fetch(`${base}${p}`, {
+                method: "POST",
+                headers: { Cookie: cookie },
+                body: fakeZip(),
+            });
+            assert.equal(res.status, 403, p);
+        }
+        assert.deepEqual(backupArgs, []);
     });
 });

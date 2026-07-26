@@ -46,16 +46,33 @@ install -d -m 0755 "$DEST"
 install -m 0755 "$SRC/odelicd.py" "$DEST/odelicd.py"
 echo "  $DEST/odelicd.py"
 
+# ⭐ API の公開範囲は**既に選ばれていればそれを尊重する。**
+#    入れ直しただけで LAN に出たり localhost に閉じたりしたら驚く。
+BIND="$(sed -n 's/^ODELIC_BIND=\(.*\)$/\1/p' /etc/default/odelicd 2>/dev/null | head -n1)"
+if [ -z "$BIND" ]; then
+    # ⚠️⚠️ 既定は localhost 限定。この API には**認証が無い**ので、
+    #    LAN に出すのは利用者が設定画面で明示的に選んだときだけにする
+    BIND=127.0.0.1
+fi
+
 # ID にはパスワードが含まれるので root のみ読める設定ファイルに置く
 cat > /etc/default/odelicd <<EOF
 # odelicd の設定。ODELIC_ID の下位 4 桁はメッシュのパスワードなので取り扱い注意。
 ODELIC_ID=$ID
 ODELIC_PORT=$PORT
+# ⚠️⚠️ この HTTP API には認証が無い。127.0.0.1 = localhost 限定（既定）。
+#    0.0.0.0 にすると LAN の誰でも照明を操作できる。設定ページから切り替えられる
+ODELIC_BIND=$BIND
 ODELIC_GROUP=$GROUP
 ODELIC_RESEND=$RESEND
 EOF
 chmod 600 /etc/default/odelicd
 echo "  /etc/default/odelicd (0600)"
+if [ "$BIND" = "127.0.0.1" ]; then
+    echo "  ⭐ API は localhost 限定（設定ページで LAN 公開に変えられます）"
+else
+    echo "  ⚠️ API を $BIND で公開しています（認証はありません）"
+fi
 
 install -m 0644 "$SRC/odelicd.service" /etc/systemd/system/odelicd.service
 echo "  /etc/systemd/system/odelicd.service"

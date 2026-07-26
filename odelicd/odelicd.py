@@ -50,6 +50,15 @@ from gi.repository import GLib
 
 # ------------------------------------------------------------------ 定数
 
+# ⚠️ 3 つの成果物でそろえる（matter/src/bridge.ts の BRIDGE_VERSION、
+#    web/src/main.ts の WEB_VERSION）。設定ページのバージョン欄に並べて出す
+ODELICD_VERSION = "0.1.0"
+
+# ⚠️⚠️ この HTTP API には**認証が無い**。既定は localhost 限定にする。
+#    LAN に出す（`0.0.0.0`）のは利用者が設定画面で明示的に選んだときだけ。
+LOCALHOST_BIND = "127.0.0.1"
+GLOBAL_BIND = "0.0.0.0"
+
 BLUEZ = "org.bluez"
 ADAPTER_IFACE = "org.bluez.Adapter1"
 GATT_MGR_IFACE = "org.bluez.GattManager1"
@@ -2497,6 +2506,7 @@ class Daemon:
 
     def info(self) -> dict:
         return {
+            "version": ODELICD_VERSION,
             "connected": self.connected,
             "joined": self.joined,
             "own_vaddr": hexs(self.own_vaddr) if self.own_vaddr else None,
@@ -2729,7 +2739,18 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="ODELIC 照明制御デーモン")
     ap.add_argument("--id", required=True, help="アプリ表示の 8 桁 ID（例 12345678）")
     ap.add_argument("--port", type=int, default=8080, help="HTTP ポート（既定 8080）")
-    ap.add_argument("--bind", default="0.0.0.0", help="待ち受けアドレス")
+    # ⚠️⚠️ **既定は localhost 限定。**この HTTP API には**認証が無い**ので、
+    #    LAN に出すと「その LAN に居る誰でも照明を操作できる」ことになる。
+    #    ⭐ Matter ブリッジと設定ページは 127.0.0.1 から叩くので、既定のままで動く。
+    #    LAN に出すのは利用者が設定画面で明示的に選んだときだけ（docs/08 W12）。
+    # ⚠️ 空文字を渡されたら（systemd の `${ODELIC_BIND}` が未設定のとき）
+    #    Python は「全インターフェース」と解釈してしまう。安全側に倒す。
+    ap.add_argument(
+        "--bind",
+        default=LOCALHOST_BIND,
+        help=f"待ち受けアドレス（既定 {LOCALHOST_BIND} = localhost 限定）。"
+        "⚠️ 0.0.0.0 にすると認証なしの API が LAN に出る",
+    )
     ap.add_argument("--group", type=int, default=0, help="操作対象のグループ番号")
     ap.add_argument(
         "--resend",
@@ -3012,9 +3033,18 @@ def main() -> int:
         GLib.timeout_add_seconds(args.poll_interval, daemon._poll_tick)
 
     Handler.daemon_ref = daemon
-    server = ThreadingHTTPServer((args.bind, args.port), Handler)
+    # ⚠️⚠️ **空文字は安全側に倒す。**systemd の `ExecStart` は未設定の
+    #    `${ODELIC_BIND}` を**空の引数**に展開するので、そのまま渡すと
+    #    Python が「全インターフェース」と解釈して、認証なしの API が LAN に出る。
+    #    古い /etc/default/odelicd（ODELIC_BIND が無い）で更新したときに起きる。
+    bind = args.bind.strip() or LOCALHOST_BIND
+    server = ThreadingHTTPServer((bind, args.port), Handler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
-    log(f"HTTP API を開始: http://{args.bind}:{args.port}/")
+    if bind in (LOCALHOST_BIND, "::1", "localhost"):
+        log(f"HTTP API を開始: http://{bind}:{args.port}/ （⭐ localhost 限定）")
+    else:
+        log(f"HTTP API を開始: http://{bind}:{args.port}/")
+        log("  ⚠️⚠️ LAN に公開しています。この API に認証はありません")
     log(
         "  POST /on /off /level?bright=60&color=50 /night?level=0 /ping"
         "   GET /status /devices"

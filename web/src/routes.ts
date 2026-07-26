@@ -25,6 +25,7 @@ import {
     clientIp,
     queryInt,
     readJsonBody,
+    readRawBody,
     redirect,
     sendJson,
     sendStatic,
@@ -38,6 +39,18 @@ import { describeOutcome, parseTarget } from "./odelicd.js";
 import type { SetId } from "./setid.js";
 import { ID_PATTERN } from "./setid.js";
 import { type UiFixture, buildState, commandForRung } from "./state.js";
+import type { ApiScope } from "./apiscope.js";
+import { isScope } from "./apiscope.js";
+import type { Backup } from "./backup.js";
+import { MAX_BACKUP_BYTES } from "./backup.js";
+
+/**
+ * ⭐ ソースと解説の置き場。設定ページのバージョン欄からリンクする。
+ *
+ * ⚠️ ここだけに書く。画面（`public/js/*.js`）に URL を直書きすると、
+ * 公開先が変わったときに直し漏れる（`.service` の `Documentation=` と同じ轍）。
+ */
+export const REPOSITORY_URL = "https://github.com/ryuuji/odelic-re-connected";
 
 export interface RouteDeps {
     config: WebConfig;
@@ -46,6 +59,10 @@ export interface RouteDeps {
     bridge: BridgeClient;
     journal: Journal;
     setId: SetId;
+    /** ⚠️ 特権操作: `odelicd` の API の公開範囲（`set-api.sh`） */
+    apiScope: ApiScope;
+    /** ⚠️ 特権操作: 状態のバックアップと復元（`backup-helper.py`） */
+    backup: Backup;
     /** 静的ファイルの置き場（`public/`） */
     publicDir: string;
     /** `/ca.crt` で配る CA 証明書 */
@@ -204,6 +221,14 @@ async function route(
         const bridge = await deps.bridge.state();
         sendJson(res, 200, {
             version: deps.version,
+            // ⭐ 3 つの成果物のバージョンをまとめて返す（設定ページのバージョン欄）。
+            // ⚠️ 届かないものは `null`。それらしい値を作らない（P4）
+            versions: {
+                web: deps.version,
+                odelicd: typeof info?.version === "string" ? info.version : null,
+                bridge: bridge.data?.version ?? null,
+            },
+            repository: REPOSITORY_URL,
             services,
             odelicdReachable: info !== null,
             bridgeReachable: bridge.reachable,
@@ -259,6 +284,101 @@ async function route(
         sendJson(res, result.ok ? 200 : 500, {
             ok: result.ok,
             detail: result.ok ? "直前の ID に戻しました" : `戻せませんでした: ${result.detail}`,
+        });
+        return;
+    }
+
+    // ------------------------------------------------- API の公開範囲（W12）
+
+    if (method === "GET" && path === "/api/apiscope") {
+        const status = await deps.apiScope.status();
+        // ⚠️ 取れなかったら null を返す。**`local` と嘘をつかない**
+        //    （実は LAN に出ているのに閉じて見えるのが最悪）
+        sendJson(res, 200, { ok: status !== null, status });
+        return;
+    }
+
+    if (method === "POST" && path === "/api/apiscope") {
+        let body: Record<string, unknown>;
+        try {
+            body = await readJsonBody(req);
+        } catch (e) {
+            sendJson(res, 400, { ok: false, detail: e instanceof Error ? e.message : String(e) });
+            return;
+        }
+        const scope = body.scope;
+        if (!isScope(scope)) {
+            sendJson(res, 400, { ok: false, detail: "scope は local か lan です" });
+            return;
+        }
+        const result = await deps.apiScope.set(scope);
+        if (!result.ok) {
+            sendJson(res, 500, { ok: false, detail: `変更できませんでした: ${result.detail}` });
+            return;
+        }
+        deps.log(
+            scope === "lan"
+                ? "⚠️ odelicd の API を LAN に公開しました（認証はありません）"
+                : "odelicd の API を localhost 限定にしました",
+        );
+        sendJson(res, 200, {
+            ok: true,
+            detail:
+                scope === "lan"
+                    ? "LAN に公開しました。⚠️ この API に認証はありません"
+                    : "localhost 限定にしました",
+            // ⚠️ 再起動したので器具が繋ぎ直すまで数秒かかる
+            restarted: true,
+        });
+        return;
+    }
+
+    // ------------------------------------------------ バックアップと復元（W13）
+
+    if (method === "GET" && path === "/api/backup") {
+        const info = await deps.backup.info();
+        sendJson(res, 200, { ok: info.ok, detail: info.detail, info: info.data });
+        return;
+    }
+
+    if (method === "POST" && path === "/api/backup/export") {
+        const result = await deps.backup.export();
+        if (!result.ok || result.data === null) {
+            sendJson(res, 500, { ok: false, detail: `作成できませんでした: ${result.detail}` });
+            return;
+        }
+        const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "").replace(/-/g, "");
+        deps.log(`バックアップを配信しました（${result.data.length} バイト）`);
+        // ⚠️⚠️ 中身は秘密情報の塊。**キャッシュさせない**
+        res.writeHead(200, {
+            "Content-Type": "application/zip",
+            "Content-Length": result.data.length,
+            "Content-Disposition": `attachment; filename="odelic-backup-${stamp}.zip"`,
+            "Cache-Control": "no-store",
+        });
+        res.end(result.data);
+        return;
+    }
+
+    if (method === "POST" && path === "/api/backup/restore") {
+        let zip: Buffer;
+        try {
+            zip = await readRawBody(req, MAX_BACKUP_BYTES);
+        } catch (e) {
+            sendJson(res, 413, { ok: false, detail: e instanceof Error ? e.message : String(e) });
+            return;
+        }
+        const result = await deps.backup.restore(zip);
+        if (!result.ok) {
+            // ⚠️ ヘルパの理由をそのまま返す（「復元できません」だけでは直せない）
+            sendJson(res, 400, { ok: false, detail: result.detail });
+            return;
+        }
+        deps.log(`バックアップから復元しました（${result.data?.restored ?? "?"} ファイル）`);
+        sendJson(res, 200, {
+            ok: true,
+            restored: result.data?.restored ?? null,
+            detail: "復元してサービスを再起動しました",
         });
         return;
     }

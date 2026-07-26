@@ -733,7 +733,7 @@ Invoke « 3.onOff.on
 
 ### 状態のバックアップ
 
-[`backup.sh`](../backup.sh)。systemd タイマーで毎日 03:30。
+⭐ **設定ページの「バックアップと復元」から ZIP で落とす**（→ [08 W13](08-web-ui.md)）。
 
 | 対象 | 失うと何が起きるか |
 | --- | --- |
@@ -741,44 +741,34 @@ Invoke « 3.onOff.on
 | `/var/lib/odelicd` | 広告アドレス・コントローラ識別子（器具が覚えている） |
 | `/etc/default/odelicd` | ⚠️ 8 桁 ID（**メッシュのパスワードを含む**） |
 | `/etc/odelic-matter` | 器具名・ケルビン設定 |
+| `/etc/odelic-web` | ⭐ ローカル CA の鍵（失うと全端末で信頼をやり直し） |
+| `/var/lib/odelic-web` | 設定ページのパスワード（scrypt ハッシュ） |
 
-1 回 8 KB、7 世代を保持。⚠️ `/` が 90% 使用なので世代管理は必須。
+⚠️⚠️ **ZIP には秘密情報が入る**（メッシュのパスワード・Matter の fabric 秘密鍵・
+ローカル CA の秘密鍵）。**そのまま他人に渡さないこと。**
 
-⚠️⚠️ **出力には秘密情報（メッシュのパスワード・Matter の fabric 秘密鍵）が入る。**
-`0600 root:root`・ディレクトリ `0700` で作る。**そのまま他人に渡さないこと。**
+⭐ **手元の PC に落ちるのが要点。**Pi の SD カードが死んでも残る。
 
-⚠️ **SD カードの故障には単体では効かない**（同じカードに置くため）。
-カード故障に備えるなら開発機へ引き上げる。
-
-```bash
-ssh odelic-re-connected 'sudo cat /var/backups/odelic/latest.tar.gz' > odelic-backup.tar.gz
-```
-
-守れるのは「うっかり消した」「アップグレードで壊した」「状態が壊れた」。
+⚠️ 以前は `backup.sh` が systemd タイマーで毎日 `/var/backups/odelic` に
+tar.gz を置いていたが、**同じカードに置くのでカード故障には効かない**うえ、
+対象リストが 2 か所に分かれて食い違う危険があった。→ **設定ページに一本化した。**
 
 #### 復元
 
-```bash
-sudo systemctl stop odelic-matter odelicd
-sudo tar xzf /var/backups/odelic/latest.tar.gz -C /
-sudo systemctl start odelicd odelic-matter
-```
+設定ページで ZIP を選んで「復元する」。⚠️ 3 つのサービスが再起動し、
+**設定ページのパスワードもバックアップ時点に戻る**のでログインし直しになる。
 
 ⚠️ 別の Pi へ移すと fabric 鍵ごと移るので Google Home からは「同じデバイス」に見える
 （再 commissioning 不要）。ただし **2 台同時に起動してはいけない**。
 
-#### ⚠️ 踏んだ罠
-
-**`sudo` の前にシェルがグロブを展開する。**`sudo rm -rf /var/backups/odelic/*` や
-`sudo stat .../odelic-*.tar.gz` は、**呼び出し側のシェル（非 root）が 0700 の
-ディレクトリを読めないため展開に失敗**し、何もせず成功したように見える。
+⚠️ **タイマーを入れていた Pi では、更新後に片付けが要る**（ユニットが残っていると
+5 分ごとに「スクリプトが無い」で失敗し続ける）。
 
 ```bash
-sudo sh -c 'rm -f /var/backups/odelic/odelic-*.tar.gz'   # ⭐ root 側で展開させる
+sudo systemctl disable --now odelic-backup.timer
+sudo rm -f /etc/systemd/system/odelic-backup.{service,timer}
+sudo systemctl daemon-reload
 ```
-
-⚠️ さらに `sh`（dash）は **brace 展開に非対応**。`{a,b}` は使えない。
-この 2 つで「消したつもりが消えていない」を 2 回踏んだ。
 
 ---
 

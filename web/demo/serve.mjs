@@ -39,12 +39,17 @@ import { Journal } from "../dist/src/journal.js";
 import { OdelicClient } from "../dist/src/odelicd.js";
 import { createHandler } from "../dist/src/routes.js";
 import { SetId } from "../dist/src/setid.js";
+import { ApiScope } from "../dist/src/apiscope.js";
+import { Backup } from "../dist/src/backup.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const WEB_ROOT = join(HERE, "..");
 const PORT = Number(process.env.PORT ?? 8080);
 
 const NOW = Math.floor(Date.now() / 1000);
+
+/** デモ用に切り替えられる公開範囲（実際の設定は書き換えない） */
+let demoScope = "local";
 
 /**
  * 画面を見て「作り込まれている」と判るだけの器具を用意する。
@@ -104,6 +109,7 @@ function startFakeOdelicd() {
             // ⚠️ 形は odelicd.py の `GET /info` に合わせる。⭐ status.js は
             //    `crypto` と `tuning` も読む（「内部の数値」カード）
             return json(res, 200, {
+                version: "0.1.0",
                 connected: true,
                 joined: true,
                 own_vaddr: "25 00 00 00",
@@ -348,6 +354,43 @@ const handler = createHandler({
         helper: "/opt/odelic-web/set-id.sh",
         // ⚠️ 実際には呼ばない（root 権限が要る特権操作）。画面の表示だけ本物にする
         run: async () => ({ stdout: "id=12345678 rollback=yes\n", stderr: "", code: 0 }),
+    }),
+    // ⭐ 公開範囲はデモでも切り替えられる（画面の見た目を両方撮れるように）
+    apiScope: new ApiScope({
+        helper: "/opt/odelic-web/set-api.sh",
+        run: async args => {
+            if (args[0] === "--status") {
+                const bind = demoScope === "lan" ? "0.0.0.0" : "127.0.0.1";
+                return { stdout: `scope=${demoScope} bind=${bind} port=8080\n`, stderr: "", code: 0 };
+            }
+            demoScope = args[0];
+            return { stdout: `切り替えました（${demoScope}）\n`, stderr: "", code: 0 };
+        },
+    }),
+    backup: new Backup({
+        helper: "/opt/odelic-web/backup-helper.py",
+        // ⚠️ 本物の秘密は触らない。--info の形と、それらしい ZIP を返すだけ
+        run: async args => {
+            if (args[0] === "--info") {
+                return {
+                    stdout: Buffer.from(JSON.stringify({
+                        formatVersion: 1,
+                        targets: [],
+                        files: 14,
+                        bytes: 268_432,
+                        newestMtime: NOW,
+                        services: ["odelicd", "odelic-matter", "odelic-web"],
+                    })),
+                    stderr: "",
+                    code: 0,
+                };
+            }
+            if (args[0] === "--export") {
+                // ⭐ 中身が空でも「ZIP として開ける」ものを返す（ダウンロードの導線を試せる）
+                return { stdout: Buffer.from("PK" + "\0".repeat(18), "latin1"), stderr: "", code: 0 };
+            }
+            return { stdout: Buffer.from(JSON.stringify({ restored: 14 })), stderr: "", code: 0 };
+        },
     }),
     // ⭐ 本物の public/ を配る。ここが同一でないとキャプチャの意味がない
     publicDir: join(WEB_ROOT, "public"),

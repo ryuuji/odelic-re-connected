@@ -30,6 +30,11 @@
   // ⚠️ sudoers で許可する唯一のスクリプト。これ以外を root で動かさない
   "setIdHelper": "/opt/odelic-web/set-id.sh",
 
+  // ⚠️ sudoers で許可する残り 2 本。⭐ set-id.sh と合わせて **3 本だけ**
+  //    （それ以外を root で動かさない）
+  "setApiHelper": "/opt/odelic-web/set-api.sh",
+  "backupHelper": "/opt/odelic-web/backup-helper.py",
+
   // ログ画面で見られる unit。⚠️ ここに無い名前は journalctl に渡さない
   "logUnits": ["odelicd", "odelic-matter", "odelic-web"],
   // 1 回に取れる行数の上限（Pi 3 のメモリを守る）

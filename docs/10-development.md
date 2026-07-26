@@ -121,7 +121,6 @@ node -e "import('@odelic/common').then(m => console.log(m.ladder(true).length))"
 
 ```bash
 sudo ./install.sh <8桁ID>            # odelicd → matter → web を正しい順で入れる
-sudo ./install.sh <8桁ID> --with-backup
 ```
 
 個別に入れ直すとき、または一括インストーラが何をしているかを知りたいとき。
@@ -133,7 +132,7 @@ sudo ./install.sh <8桁ID> --with-backup
 | `odelic-matter` | `sudo ./matter/install.sh http://127.0.0.1:8080` |
 | `odelic-web` | `sudo ./web/install.sh` → ⭐ **初期パスワードが 1 回だけ表示される** |
 | パスワードの作り直し | `sudo /opt/odelic-web/reset-password.sh`（⚠️ 全端末ログアウト） |
-| バックアップ | `sudo ./backup.sh --install`（毎日 03:30） |
+| バックアップ | ⭐ **設定ページから ZIP で取る**（→ [08 W13](08-web-ui.md)） |
 
 ⚠️ 順序は **`odelicd` → `matter` → `web`**。`web` は起動時に両方を見に行くが、
 落ちていても起動はする（照明の操作は `odelicd` さえ生きていればできる）。

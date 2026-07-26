@@ -30,18 +30,24 @@ export function stop() {
 
 async function draw(container) {
     replace(container, card(loading("設定を読み込み中")));
-    const [state, settings, homeid] = await Promise.all([
+    const [state, settings, homeid, health, scope, backup] = await Promise.all([
         api("/api/bridge/state"),
         api("/api/bridge/settings"),
         api("/api/homeid"),
+        api("/api/health"),
+        api("/api/apiscope"),
+        api("/api/backup"),
     ]);
     replace(
         container,
         fixtureNamesCard(state.data, container),
         bridgeSettingsCard(settings.data, container),
         homeidCard(homeid.data, container),
+        apiScopeCard(scope.data, container),
+        backupCard(backup.data, container),
         passwordCard(),
         logoutCard(),
+        versionCard(health.data),
     );
 }
 
@@ -342,6 +348,228 @@ async function rollback(event, status, container) {
     else button.disabled = false;
 }
 
+// ----------------------------------------------------- API の公開範囲（W12）
+
+/**
+ * `odelicd` の HTTP API を LAN に出すかどうか。
+ *
+ * ## ⚠️⚠️ この API には認証が無い
+ *
+ * LAN に出すということは「**その LAN に居る誰でも照明を操作できる**」という意味。
+ * ⭐ しかも **localhost 限定のままで、音声操作もスマホ操作も全部できる**
+ * （Matter ブリッジも設定ページも 127.0.0.1 から叩いている）。
+ *
+ * → だから既定は localhost で、**LAN 側を選ぶときだけ確認を挟む。**
+ *   逆向き（閉じる方向）は確認しない。安全になる操作を邪魔しない。
+ */
+function apiScopeCard(payload, container) {
+    const status = payload?.status ?? null;
+    if (status === null) {
+        return card(
+            el("h2", { text: "API の公開範囲" }),
+            // ⚠️ 取れないときに「localhost です」と書かない。実は開いているかもしれない
+            notice("warn", "今の設定を読み取れませんでした", "odelicd が動いているか確認してください。"),
+        );
+    }
+    const isLan = status.scope === "lan";
+    const button = el("button", {
+        class: isLan ? "" : "primary",
+        text: isLan ? "localhost 限定に戻す" : "LAN に公開する",
+    });
+    button.addEventListener("click", async event => {
+        const target = event.currentTarget;
+        const next = isLan ? "local" : "lan";
+        if (next === "lan") {
+            // ⚠️ 危ないほうへ動かすときだけ確認する
+            const ok = confirm(
+                "この API には認証がありません。\n" +
+                    "LAN に出すと、同じネットワークに居る人は誰でも照明を操作できます。\n\n" +
+                    "音声操作とこの設定ページは localhost 限定のままでも使えます。\n" +
+                    "本当に公開しますか？",
+            );
+            if (!ok) return;
+        }
+        target.disabled = true;
+        const { ok, data } = await api("/api/apiscope", { method: "POST", body: { scope: next } });
+        if (ok) {
+            toast(data.detail ?? "変更しました", next === "lan" ? "warn" : "good");
+            // ⚠️ odelicd を再起動したので、器具が繋ぎ直すまで数秒かかる
+            void draw(container);
+            return;
+        }
+        toast(data.detail ?? "変更できませんでした", "bad");
+        target.disabled = false;
+    });
+
+    return card(
+        el("h2", { text: "API の公開範囲" }),
+        el("p", {}, [
+            el("span", { class: `pill ${isLan ? "bad" : "good"}`, text: isLan ? "LAN に公開中" : "localhost 限定" }),
+            el("span", { class: "mono muted", text: `  ${status.bind}:${status.port ?? "?"}` }),
+        ]),
+        isLan
+            ? notice(
+                  "warn",
+                  "同じネットワークの誰でも照明を操作できます",
+                  "この API に認証はありません。必要が無ければ localhost 限定に戻してください。",
+              )
+            : el("p", {
+                  class: "muted",
+                  text:
+                      "⭐ この設定ページと音声操作（Matter）は localhost 限定のままで使えます。" +
+                      "LAN に出す必要があるのは、別のマシンから curl などで直接叩きたいときだけです。",
+              }),
+        button,
+        el("p", { class: "muted", text: "⚠️ 変更すると odelicd を再起動します（数秒、操作できません）。" }),
+    );
+}
+
+// -------------------------------------------------- バックアップと復元（W13）
+
+/**
+ * 状態のバックアップと復元。
+ *
+ * ## ⚠️⚠️ この ZIP は Pi ごと持ち出せる鍵束
+ *
+ * メッシュのパスワード・Matter の fabric 秘密鍵・ローカル CA の秘密鍵・
+ * 設定ページのパスワードのハッシュが入る。⭐ **画面にそう書く。**
+ * 「バックアップ」という言葉だけでは、渡してはいけないものだと伝わらない。
+ *
+ * ⭐ ダウンロードは POST で取る（`api()` は JSON 前提なので `fetch` を直に使う）。
+ * ⚠️ CSRF ヘッダを忘れない。
+ */
+function backupCard(payload, container) {
+    const info = payload?.info ?? null;
+    const fileInput = el("input", { type: "file", accept: ".zip,application/zip" });
+
+    const download = el("button", { class: "primary", text: "バックアップをダウンロード" });
+    download.addEventListener("click", async event => {
+        const target = event.currentTarget;
+        target.disabled = true;
+        try {
+            // ⚠️ `api()` は JSON を返す前提なのでここでは使えない（中身は ZIP）
+            const res = await fetch("/api/backup/export", {
+                method: "POST",
+                headers: { "X-Odelic-Request": "1" },
+            });
+            if (res.status === 401) {
+                location.href = "/login";
+                return;
+            }
+            if (!res.ok) {
+                let detail = "作成できませんでした";
+                try {
+                    detail = (await res.json()).detail ?? detail;
+                } catch {
+                    /* JSON でなければ既定の文言 */
+                }
+                toast(detail, "bad");
+                return;
+            }
+            const blob = await res.blob();
+            // ⭐ サーバが付けた Content-Disposition のファイル名を使う
+            const name =
+                /filename="([^"]+)"/.exec(res.headers.get("content-disposition") ?? "")?.[1] ??
+                "odelic-backup.zip";
+            const url = URL.createObjectURL(blob);
+            const a = el("a", { href: url, download: name });
+            document.body.append(a);
+            a.click();
+            a.remove();
+            // ⚠️ 秘密情報を掴んだままにしない。すぐ解放する
+            URL.revokeObjectURL(url);
+            toast("ダウンロードしました。⚠️ 他人に渡さないでください", "good");
+        } finally {
+            target.disabled = false;
+        }
+    });
+
+    const restore = el("button", { text: "選んだファイルから復元する" });
+    restore.addEventListener("click", async event => {
+        const target = event.currentTarget;
+        const file = fileInput.files?.[0];
+        if (file === undefined) {
+            toast("復元する ZIP を選んでください", "bad");
+            return;
+        }
+        const ok = confirm(
+            `「${file.name}」から復元します。\n\n` +
+                "⚠️ 今の設定・器具の名簿・Matter の登録・このページのパスワードは\n" +
+                "すべてバックアップ時点の内容に置き換わります。\n" +
+                "3 つのサービスが再起動し、ログアウトされることがあります。\n\n" +
+                "続けますか？",
+        );
+        if (!ok) return;
+        target.disabled = true;
+        try {
+            const res = await fetch("/api/backup/restore", {
+                method: "POST",
+                headers: { "X-Odelic-Request": "1", "Content-Type": "application/zip" },
+                body: file,
+            });
+            if (res.status === 401) {
+                location.href = "/login";
+                return;
+            }
+            let data = {};
+            try {
+                data = await res.json();
+            } catch {
+                /* 落ちても下で扱う */
+            }
+            if (!res.ok) {
+                // ⭐ ヘルパの理由をそのまま出す（「復元できません」では直せない）
+                toast(data.detail ?? "復元できませんでした", "bad");
+                return;
+            }
+            toast(`復元しました（${data.restored ?? "?"} ファイル）。再読み込みします`, "good");
+            // ⚠️ パスワードも入れ替わっているのでログイン画面へ送る
+            setTimeout(() => location.reload(), 2000);
+        } finally {
+            target.disabled = false;
+        }
+    });
+
+    return card(
+        el("h2", { text: "バックアップと復元" }),
+        el("p", {
+            class: "muted",
+            text:
+                "⭐ 失うと復旧が重いものだけを ZIP で取ります: Matter の登録（fabric 鍵）・" +
+                "器具の名簿と名前・ホーム ID・ローカル CA の鍵・このページのパスワード。",
+        }),
+        info === null
+            ? notice("warn", "対象を読み取れませんでした", "権限の設定を確認してください。")
+            : el("p", { class: "muted", text: `対象 ${info.files} ファイル / ${formatBytes(info.bytes)}` }),
+        // ⚠️⚠️ ここははっきり書く。「バックアップ」では危険性が伝わらない
+        notice(
+            "warn",
+            "この ZIP は Pi の鍵束です",
+            "メッシュのパスワード・Matter の秘密鍵・CA の秘密鍵が入っています。" +
+                "他人に渡さないでください。渡すと照明を操作され、偽サイトを作られます。",
+        ),
+        download,
+        el("hr"),
+        el("h3", { text: "復元" }),
+        el("label", { class: "field" }, [el("span", { text: "バックアップの ZIP" }), fileInput]),
+        restore,
+        el("p", {
+            class: "muted",
+            text:
+                "⚠️ 復元すると今の設定は失われ、3 つのサービスが再起動します。" +
+                "パスワードもバックアップ時点のものに戻るので、ログインし直しになります。",
+        }),
+    );
+}
+
+/** バイト数を読みやすくする。⭐ 端数は要らない（桁が分かれば十分）。 */
+function formatBytes(n) {
+    if (typeof n !== "number" || !Number.isFinite(n)) return "—";
+    if (n < 1024) return `${n} バイト`;
+    if (n < 1024 * 1024) return `${Math.round(n / 1024)} KB`;
+    return `${(n / 1024 / 1024).toFixed(1)} MB`;
+}
+
 // ------------------------------------------------------------ パスワード
 
 function passwordCard() {
@@ -405,6 +633,53 @@ function logoutCard() {
                 await api("/api/logout", { method: "POST" }).catch(() => {});
                 location.href = "/login";
             },
+        }),
+    );
+}
+
+// -------------------------------------------------------------- バージョン
+
+/**
+ * バージョンとソースへのリンク。
+ *
+ * ⭐ 3 つのプロセスを別々に出す。**片方だけ入れ替わっている状態が起こりうる**
+ * （`install.sh` を個別に叩ける・開発機から `dist` だけ送ることもある）ので、
+ * 「システムのバージョン」を 1 つ出すと嘘になる。
+ *
+ * ⚠️ 届かないものは「—」。それらしい値を作らない（P4）。
+ * ⚠️ リンク先の URL はサーバから受け取る（`routes.ts` の `REPOSITORY_URL`）。
+ *    ここに直書きすると公開先が変わったときに直し漏れる。
+ */
+function versionCard(health) {
+    const v = health?.versions ?? {};
+    const row = (label, value, note) =>
+        el("tr", {}, [
+            el("th", { text: label }),
+            el("td", { class: "mono", text: value ?? "—" }),
+            el("td", { class: "muted", text: note }),
+        ]);
+    const repo = health?.repository ?? null;
+    return card(
+        el("h2", { text: "バージョン" }),
+        el("table", {}, [
+            row("この設定ページ", v.web, "odelic-web"),
+            row("照明サーバ", v.odelicd, "odelicd（BLE）"),
+            row("Matter ブリッジ", v.bridge, "odelic-matter"),
+        ]),
+        repo === null
+            ? null
+            : el("p", {}, [
+                  el("a", {
+                      href: repo,
+                      // ⚠️ 外部サイトを新しいタブで開くときは必ず noreferrer も付ける
+                      target: "_blank",
+                      rel: "noopener noreferrer",
+                      text: "ソースコードと解説（GitHub）",
+                  }),
+              ]),
+        el("p", {
+            class: "muted",
+            text: "通信プロトコルの解析結果もリポジトリの docs/ に置いてあります。",
         }),
     );
 }

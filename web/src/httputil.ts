@@ -105,6 +105,24 @@ export async function sendStatic(res: ServerResponse, root: string, relPath: str
 }
 
 /** JSON のリクエストボディを読む。⚠️ サイズ上限を必ず持たせる。 */
+/**
+ * ボディをそのまま Buffer で読む（ZIP のアップロード用）。
+ *
+ * ⚠️ `limit` を超えたら**読み進めずに例外にする**。Pi 3 のメモリを守る。
+ * ⚠️ JSON ではないので `readJsonBody` と分ける（`toString` すると壊れる）。
+ */
+export async function readRawBody(req: IncomingMessage, limit: number): Promise<Buffer> {
+    const chunks: Buffer[] = [];
+    let total = 0;
+    for await (const chunk of req) {
+        const buf = chunk as Buffer;
+        total += buf.length;
+        if (total > limit) throw new Error("リクエストが大きすぎます");
+        chunks.push(buf);
+    }
+    return Buffer.concat(chunks);
+}
+
 export async function readJsonBody(req: IncomingMessage, limit = 64 * 1024): Promise<Record<string, unknown>> {
     const chunks: Buffer[] = [];
     let total = 0;
