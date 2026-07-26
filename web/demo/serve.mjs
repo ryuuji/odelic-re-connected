@@ -101,6 +101,8 @@ function startFakeOdelicd() {
             return devices;
         };
         if (p === "/info") {
+            // ⚠️ 形は odelicd.py の `GET /info` に合わせる。⭐ status.js は
+            //    `crypto` と `tuning` も読む（「内部の数値」カード）
             return json(res, 200, {
                 connected: true,
                 joined: true,
@@ -111,20 +113,66 @@ function startFakeOdelicd() {
                 live_links: [devices[0].mac],
                 primary_mac: devices[0].mac,
                 link_held_sec: 5311,
+                join_count: 1,
                 queued: 0,
                 uptime_sec: 86_400,
+                intents: [],
+                crypto: {
+                    login_reply: 1,
+                    link_keys: { "EC:C5:7F:81:DE:CD": "BD E1 AC C3" },
+                    decrypted: 1284,
+                    decrypt_failed: 0,
+                    segments_assembled: 12,
+                    segments_dropped: 0,
+                },
+                tuning: {
+                    resend: 1,
+                    confirm_delay_ms: 156.0,
+                    probe_window_ms: 900.0,
+                    rtt_p90_ms: 78.0,
+                    worst_delivery: 0.997,
+                    dup_window_sec: 2.0,
+                },
             });
         }
         if (p === "/metrics") {
+            // ⚠️⚠️ ここは odelicd.py の `Metrics.snapshot()` と同じ形にする。
+            //    `rtt_ms` と `delivery` は **キー（vAddr）→ 統計オブジェクト**の
+            //    2 段。平らな `{p50, p90}` にすると status.js が「まだ計測が
+            //    ありません」になる（実際にそう書いて気付いた）
+            const rttStats = (p50, p90, p99, min, max, n) => ({ n, p50, p90, p99, min, max });
             return json(res, 200, {
-                // ⚠️ delivery の値は数値ではなくオブジェクト（OdelicMetrics）
+                rtt_ms: {
+                    "05000000": rttStats(57.1, 78.3, 104.2, 41.0, 117.0, 642),
+                    "01000000": rttStats(62.4, 81.9, 110.6, 44.2, 123.5, 642),
+                },
                 delivery: {
                     "05000000": { ewma: 1.0, n: 642, absent: false },
                     "01000000": { ewma: 0.997, n: 642, absent: false },
                 },
-                rtt_ms: { p50: 57, p90: 78, max: 117, n: 1284 },
-                link_life_sec: { p50: 152, max: 5311, disconnects: 0 },
-                converge_ms: { p50: 312, p90: 347, n: 96 },
+                converge_ms: rttStats(312.1, 347.0, 401.8, 277.4, 412.0, 96),
+                converge_attempts: { 1: 94, 2: 2 },
+                links: {
+                    [devices[0].mac]: {
+                        mac: devices[0].mac, live: true, held_sec: 5311.0, silence_sec: 1.2,
+                        up_count: 1, down_count: 0, logins: 1, writes: 1284,
+                        vaddr: devices[0].vaddr, last_reason: null,
+                        held_sec_hist: rttStats(152.0, 4870.0, 5311.0, 7.4, 5311.0, 3),
+                        rtt_ms: rttStats(57.1, 78.3, 104.2, 41.0, 117.0, 642),
+                    },
+                    [devices[1].mac]: {
+                        mac: devices[1].mac, live: false, held_sec: null, silence_sec: 412.5,
+                        up_count: 3, down_count: 3, logins: 3, writes: 87,
+                        vaddr: devices[1].vaddr, last_reason: "connection timeout",
+                        held_sec_hist: rttStats(14.0, 121.0, 138.0, 7.1, 138.0, 3),
+                        rtt_ms: rttStats(62.4, 81.9, 110.6, 44.2, 123.5, 642),
+                    },
+                },
+                // ⚠️ キー名も本物どおり（`pdus` / `bytes`。`total` ではない）
+                send: { pdus: 1284, bytes: 25_680, no_link: 0, notify_fail: 0 },
+                recv: { status_dup: 3, status_unsolicited: 11 },
+                probe: { opened: 96, closed: 96, dups: 3, superseded: 1, unreachable: 0 },
+                since: NOW - 86_400,
             });
         }
         if (p === "/on" || p === "/off") {
@@ -159,13 +207,19 @@ function startFakeBridge() {
         "EC:C5:7F:81:DE:CD": "ダイニングの照明",
         "EC:C5:7F:80:28:A6": "リビングの照明",
     };
+    // ⚠️⚠️ 形は `src/bridge.ts` の `BridgeCommissioning` に合わせる。
+    //    ⭐ `fabrics` は **配列**（`{index, label, vendorId}`）。数値にすると
+    //    ステータス画面が `fabrics.map is not a function` で落ちる（実際に落ちた）。
+    //    受付の状態は `open` ではなく `windowOpen` / `windowRemainingSec`。
     let commissioning = {
         commissioned: true,
         manualPairingCode: "3497-011-2332",
         qrPairingCode: "MT:Y.K9042C00KA0648G00",
         qrText: null,
-        open: false,
-        fabrics: 1,
+        fabrics: [{ index: 1, label: "Google Home", vendorId: 0x6006 }],
+        windowOpen: false,
+        windowRemainingSec: null,
+        commissionedAt: "2026-07-26T09:01:44.000Z",
     };
     const settings = {
         nightBandPercent: 10,
@@ -210,11 +264,16 @@ function startFakeBridge() {
         }
         if (p === "/admin/commissioning" && m === "GET") return json(res, 200, commissioning);
         if (p === "/admin/commissioning/open" && m === "POST") {
-            commissioning = { ...commissioning, open: true };
+            const { seconds } = await readBody(req);
+            commissioning = {
+                ...commissioning,
+                windowOpen: true,
+                windowRemainingSec: typeof seconds === "number" ? seconds : 900,
+            };
             return json(res, 200, commissioning);
         }
         if (p === "/admin/commissioning/close" && m === "POST") {
-            commissioning = { ...commissioning, open: false };
+            commissioning = { ...commissioning, windowOpen: false, windowRemainingSec: null };
             return json(res, 200, commissioning);
         }
         const rename = /^\/admin\/fixtures\/([^/]+)\/name$/.exec(p);

@@ -240,8 +240,14 @@ function countersCard(info, m) {
         el("h2", { text: "内部の数値" }),
         el("div", { class: "scroll-x" }, [
             kv([
-                ["送信回数", String(m?.send?.total ?? m?.send?.pdu ?? "—")],
-                ["受信回数", String(m?.recv?.total ?? m?.recv?.pdu ?? "—")],
+                // ⚠️ キー名は odelicd の `bump("send", "pdus")` に合わせる。
+                //    `total` / `pdu` を見ていたので、この行は常に「—」だった
+                ["送信 PDU / バイト", `${m?.send?.pdus ?? "—"} / ${m?.send?.bytes ?? "—"}`],
+                // ⚠️ 送れなかった回数。0 以外なら電波かリンクを疑う
+                ["送信 失敗 / リンク無し", `${m?.send?.notify_fail ?? "—"} / ${m?.send?.no_link ?? "—"}`],
+                // ⭐ 受信の総数は odelicd が数えていない。数えているのは
+                //    「重複した状態応答」と「頼んでいない状態応答」だけ
+                ["状態応答 重複 / 非要求", `${m?.recv?.status_dup ?? "—"} / ${m?.recv?.status_unsolicited ?? "—"}`],
                 ["復号 成功 / 失敗", `${crypto.decrypted ?? "—"} / ${crypto.decrypt_failed ?? "—"}`],
                 // ⚠️ 分割 PDU の欠落は純正アプリの不安定さの核心だった（docs C30）
                 ["分割 組立 / 欠落", `${crypto.segments_assembled ?? "—"} / ${crypto.segments_dropped ?? "—"}`],
