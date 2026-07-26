@@ -15,7 +15,7 @@ import { describe, it } from "node:test";
 
 import { maskLine, maskRuleReasons, maskSecrets } from "../src/mask.js";
 
-/** リポジトリのプレースホルダ。⚠️ 実値は書かない（PLAN.md の方針） */
+/** リポジトリのプレースホルダ。⚠️ 実値は書かない（README の「秘密情報の扱い」） */
 const ID = "12345678";
 const PASSWORD_BYTES = "35 36 37 38";
 const LOGINKEY = "D2 35 04 36 00 37 00 38 4C 4F 47 49 4E 4B 45 59";

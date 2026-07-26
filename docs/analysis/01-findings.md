@@ -187,7 +187,8 @@ ORMLite があるので器具・グループ・シーンの情報はローカル
 
 ## 4. 無線モジュール
 
-**[事実]** PLAN.md に記載の参考情報から、Pairlink 社（`pairlink.com.cn`）の BLE 技術が関係する。
+**[事実]** 調査の出発点にした参考情報から、Pairlink 社（`pairlink.com.cn`）の
+BLE 技術が関係する。→ <https://www.pairlink.com.cn/pl-web/product/ble-spec>
 
 **[事実]** 伊藤電機（`ito-elec.jp/ble/`）が Pairlink 製 BLE モジュールを取り扱っており、
 現在同ページに掲載されているのは以下 3 品番。
@@ -198,7 +199,9 @@ ORMLite があるので器具・グループ・シーンの情報はローカル
 | PLRBNEITO | Bluetooth 5.0、パターンアンテナ搭載 |
 | PLDBEITO | Bluetooth 5.0 + Classic(EDR) デュアルモード |
 
-**[事実]** PLAN.md にある `PLTCEOC-05` は、現在の同ページには掲載がない（旧品番か別ページの可能性）。
+**[事実]** 調査の初期に控えた `PLTCEOC-05` は、現在の同ページには掲載がない
+（旧品番か別ページの可能性）。→ 後に**器具が GATT で公開している型番**だと判明
+（[02 C18-6](../02-protocol.md)）。
 
 **[事実]** Pairlink 公式サイト（`pairlink.com.cn/pl-web/product/ble-spec`）は
 JavaScript による動的読み込みのため、通常の取得では本文が読めなかった。

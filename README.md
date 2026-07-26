@@ -1,233 +1,227 @@
 # odelic-re-connected
 
-ODELIC「CONNECTED LIGHTING for HOME」対応照明器具を、BLE 経由で制御する Android アプリの再開発プロジェクト。
+**ODELIC「CONNECTED LIGHTING for HOME」対応照明器具を、Raspberry Pi から操作する。**
+Google Home / Apple Home / Alexa から音声で、スマートフォンからブラウザで。
 
-純正アプリ（`jp.co.odelic.smt.remote10`）は Google Play で **★1.2（1つ星 174 件）** という評価で、
-接続の不安定さ・起動の遅さ・設定保存の失敗が繰り返し報告されている。
-本プロジェクトはその原因を解析で特定し、高速・安定に動作する代替アプリを作る。
-
-## 目的
-
-1. 純正アプリを解析し、BLE 通信プロトコルを解明する
-2. 接続が不安定になる原因を技術的に特定する
-3. 起動即操作・低レイテンシで動く Android アプリを実装する
-
-## ドキュメント
-
-| ファイル | 内容 |
-| --- | --- |
-| [PLAN.md](PLAN.md) | 全体ゴールとフェーズ |
-| [docs/analysis/01-findings.md](docs/analysis/01-findings.md) | 製品・純正アプリの調査結果（出典付きの事実整理） |
-| [docs/02-protocol.md](docs/02-protocol.md) | 通信プロトコル：仮説と確定事項 |
-| [docs/analysis/03-instability.md](docs/analysis/03-instability.md) | 接続不安定の原因仮説と検証方法 |
-| [docs/analysis/04-analysis-procedure.md](docs/analysis/04-analysis-procedure.md) | 解析手順書（環境構築・静的解析・動的解析） |
-| [docs/analysis/05-app-design.md](docs/analysis/05-app-design.md) | 新アプリの設計方針 |
-| [docs/06-raspberrypi-setup.md](docs/06-raspberrypi-setup.md) | Raspberry Pi による検証環境（照明のそばに常設） |
-| [docs/07-matter.md](docs/07-matter.md) | ⭐ **Matter 対応**（Google Home / Apple Home / Alexa から操作する） |
-| [docs/08-web-ui.md](docs/08-web-ui.md) | 設定ページとスマホ UI の設計（🚧 作りかけ） |
-| [docs/analysis/09-handoff-web-ui.md](docs/analysis/09-handoff-web-ui.md) | ⭐ **引き継ぎ**（設定ページの現在地・決定事項・踏んだ罠） |
-| [docs/10-development.md](docs/10-development.md) | ⚠️ Pi 上の 3 プロセスとビルド順序・テストの罠 |
-
-ドキュメントは**事実（出典あり）／推測（仮説）／検証済み**を明示して書く。
-新しい情報が出たら該当ファイルに追記していく。
-
-## ツール
-
-| ファイル | 内容 |
-| --- | --- |
-| [odelicd/odelicd.py](odelicd/odelicd.py) | ⭐ **常駐デーモン本体**（HTTP API で照明を制御） |
-| [matter/](matter) | ⭐ **Matter ブリッジ**（Node.js + matter.js）。照明を Matter デバイスとして公開する。BLE は使わない |
-| [odelicd/odelicd.service](odelicd/odelicd.service) | systemd ユニット |
-| [odelicd/install.sh](odelicd/install.sh) | インストーラ（`sudo ./install.sh 12345678 8080`） |
-| [backup.sh](backup.sh) | ⭐ **状態のバックアップ**（Matter の fabric 鍵・器具の名簿・設定）。`--install` で毎日取得 |
-| [docs/analysis/tools/mesh_peripheral.py](docs/analysis/tools/mesh_peripheral.py) | 検証用の単発実行版（`--send blink` など） |
-| [docs/analysis/tools/run-p2.sh](docs/analysis/tools/run-p2.sh) | 上記を `btmon` 記録付きで実行するラッパー |
-| [docs/analysis/tools/adv_raw.sh](docs/analysis/tools/adv_raw.sh) | raw HCI で `ADV_PHONE` を送る（BlueZ D-Bus の代替） |
-| [docs/analysis/tools/gattdump.py](docs/analysis/tools/gattdump.py) | 接続中の器具の GATT を列挙して読む（→ C27） |
-| [docs/analysis/tools/capture-scan.sh](docs/analysis/tools/capture-scan.sh) | Pi でのスキャンキャプチャ |
-| [docs/analysis/tools/btsnoop.py](docs/analysis/tools/btsnoop.py) | HCI ログのパーサ。Android btsnoop と `btmon` 形式の両対応。⭐ `conn` でリンクと接続パラメータ・切断理由、`latency` で送信レイテンシ分布（C33） |
-| [docs/analysis/tools/decrypt_recv.py](docs/analysis/tools/decrypt_recv.py) | ⭐ **HCI ログのメッシュ PDU を復号して読む**（受信の暗号を解いた・C23） |
-| [docs/analysis/tools/disasm.py](docs/analysis/tools/disasm.py) | `libnative-lib.so` の逆アセンブル（関数名で指定・呼び出し先を名前解決） |
-| [docs/analysis/tools/fw_analyze.py](docs/analysis/tools/fw_analyze.py) | 器具ファームウェア（APK 同梱 OTA イメージ）の解析（→ C25） |
-| [docs/analysis/tools/collect_logs.ps1](docs/analysis/tools/collect_logs.ps1) | Android からのログ回収（`prepare` / `collect`） |
-| [docs/analysis/tools/synth_btsnoop.py](docs/analysis/tools/synth_btsnoop.py) | パーサ検証用の合成ログ生成 |
+純正アプリも Pairlink SDK もベンダーのバイナリも使わない。**BLE メッシュの通信
+プロトコルを解析して自前で実装した。**その解析結果もすべて公開している。
 
 ```bash
-# 実運用（常駐サービス）
-curl -X POST http://odelic-re-connected:8080/on
-curl -X POST http://odelic-re-connected:8080/off
-curl -X POST 'http://odelic-re-connected:8080/level?bright=60&color=50'
-curl -X POST 'http://odelic-re-connected:8080/night?level=0'   # ナイトライト（0/1/2）
-curl http://odelic-re-connected:8080/status                     # 状態を要求
-curl http://odelic-re-connected:8080/devices                    # 器具ごとの現在状態
-
-# 検証用（単発実行 + HCI 記録）
-ssh odelic-re-connected '/tmp/run.sh 60 --send blink --repeat'
+sudo ./install.sh 12345678      # 純正アプリのメニュー画面に出ている 8 桁 ID
 ```
 
-```powershell
-# 照明のそばへ行く前 → 操作 → 戻ってきたら
-pwsh docs/analysis/tools/collect_logs.ps1 prepare
-pwsh docs/analysis/tools/collect_logs.ps1 collect
+---
 
-# 解析
-python docs/analysis/tools/btsnoop.py summary  artifacts/btsnoop_hci-<stamp>.log
-python docs/analysis/tools/btsnoop.py timeline artifacts/btsnoop_hci-<stamp>.log
-
-# 暗号化された PDU まで復号して読む（第 2 引数はアプリ表示の 8 桁 ID）
-python docs/analysis/tools/decrypt_recv.py artifacts/btsnoop_hci-<stamp>.log 12345678
-
-# ⭐ リンク 1 本 1 行の表（接続パラメータ・CPUR・切断理由・寿命分布）
-python docs/analysis/tools/btsnoop.py conn    artifacts/pi-conn-<stamp>.btsnoop
-# ⭐ ACL 送信 → 完了通知のレイテンシ（Connection Interval 別）
-python docs/analysis/tools/btsnoop.py latency artifacts/pi-conn-<stamp>.btsnoop
-```
-
-`summary` は ADV 種別・**HOMEID を 10 進数で**・器具の MAC を自動判定して表示します。
-
-## 現在の状況
-
-**⭐⭐⭐ Raspberry Pi 版が実用化完了（2026-07-25）。**
-
-純正アプリも `libnative-lib.so` も Pairlink SDK も使わず、
-プロトコル解析だけで照明を制御できるようになった。
-
-```bash
-curl -X POST http://odelic-re-connected:8080/off   # HTTP 200  5.2ms
-curl -X POST http://odelic-re-connected:8080/on    # HTTP 200  5.5ms
-```
-
-**⭐⭐⭐ さらに状態取得も実現（同日）。**
-受信の暗号を解き、器具の MAC・vAddr・グループ・ファーム・**現在状態**が読める。
-
-```bash
-curl -X POST 'http://odelic-re-connected:8080/level?bright=60&color=50'
-curl http://odelic-re-connected:8080/devices
-#   → on=true bright=60 color=50   ★ 指示値と一致（閉ループ）
-```
-
-鍵は器具が接続直後に平文で渡してきていた（`PERIPHERAL_LOGIN` の中身）。
-→ [C23](docs/02-protocol.md)
-
-**⭐⭐⭐ 通信戦略を実測で最適化（同日）→ [C33](docs/02-protocol.md)**
-
-`btmon` の HCI トレースと内蔵計測（`GET /metrics`）で測ったら、
-**不安定さの主犯はこちら側の実装だった**ことが判った。3 つの前提が覆った。
-
-| 判明したこと | 内容 |
-| --- | --- |
-| ⭐ **広告を出し続けると自壊する** | 新しいリンクが確立すると器具が古いリンクを 0.7〜1.4 秒後に切る（完全な交互）。メッシュは**コントローラ 1 台につきリンク 1 本**しか許さない。3 分で 22 回も参加し直していた → 参加後は接続受け付けを止める |
-| ⭐ **BlueZ が接続を遅くしていた** | 器具は 15.00 / 28.75 ms を指定してくるのに、Linux が Connection Parameter Update Request を **65/65 本**送って **45 ms に書き換えていた** → `conn_min_interval` を下げて解決 |
-| ⭐ **3 連射は無駄だった** | 送信 1 通あたりの到達率は **0.993〜1.000**。「同じ PDU が二重に届く」現象も**自分の 3 連射が原因**だった |
-
-```bash
-curl -X POST 'http://odelic-re-connected:8080/level?bright=70&color=50&wait=1'
-#   → HTTP 200  0.32s  detail=converged   ★ 器具が実際にその状態になったことを確認済み
-curl http://odelic-re-connected:8080/metrics     # RTT 分布・到達率・リンク寿命・収束時間
-```
-
-| | 純正アプリ | **odelicd** |
-| --- | --- | --- |
-| 起動〜操作可能 | 約 7 秒 | **0 秒**（常時接続維持） |
-| 1 操作の所要時間 | 不明・確認なし | **5〜8 ミリ秒** |
-| 取りこぼし対策 | 送信 1 回のみ・確認なし | **1 通送って状態応答で確認し、届くまで再送** |
-| 効いたことの確認 | しない | **`?wait=1` で 277〜320 ms**（収束を確認して 200 / 未確認なら 504） |
-| リンクの維持 | — | 寿命 p50 **152 秒**（旧実装は 7〜14 秒で切り合っていた） |
-| 状態要求の往復 | — | p50 **50〜78 ms** / p90 60〜92 ms / max 77〜117 ms |
-| 未接続時 | 「接続成功」と表示する | **HTTP 503 + キューに保持** |
-
-systemd で常駐（自動起動有効）。→ [docs/06-raspberrypi-setup.md](docs/06-raspberrypi-setup.md)
-
-**⭐⭐ Matter ブリッジを実装（2026-07-26）→ [docs/07-matter.md](docs/07-matter.md)**
-
-照明を標準の Matter デバイスとして公開し、Google Home / Apple Home / Alexa から
-操作できるようにした。Pi に常駐して稼働中。
-
-```
-＋ Matter に追加: ダイニングの照明 (EC:C5:7F:81:DE:CD) colorTemperature / 常夜灯あり
-＋ Matter に追加: リビングの照明 (EC:C5:7F:80:28:A6) colorTemperature / 常夜灯あり
-```
+## できること
 
 | | |
 | --- | --- |
-| ⭐ **BLE アダプタの競合** | **起きない。**matter.js は BLE が任意で、参加はオンネットワーク commissioning（mDNS / IPv6）。Pi の唯一の BLE アダプタは `odelicd` が握ったまま |
-| ⭐ **`odelicd` への変更** | **なし。**既存の HTTP API だけを使う別プロセス |
-| ⭐ **常夜灯の表現** | **明るさ 1 軸の下端に載せた。**Matter に常夜灯クラスタは無いが、常夜灯は主灯より暗く両者は排他（C24-5）なので、1 本のスライダーに畳める。純正アプリも天井灯でない器具には明るさコード 17〜19 で代用しており、考え方が一致する |
-| 退行 | **なし。**到達率 1.000 / リンク寿命 5311 秒・切断 0 / RTT p50 57 ms |
-| メモリ | `odelicd` 37.8 MB + ブリッジ 125 MB（Pi 3 の RAM 905 MB で共存） |
+| 🎙 **音声で操作** | 「つけて」「15% にして」「電球色にして」— Matter デバイスとして公開するので Google Home / Apple Home / Alexa から使える |
+| 📱 **スマホから操作** | ブラウザで開くだけ（アプリ不要）。HTTPS + パスワード |
+| ⚡ **待たされない** | 純正アプリは起動から操作可能まで約 7 秒。こちらは**常時接続を維持していて 0 秒**、1 操作 **5〜8 ミリ秒** |
+| ✅ **効いたことを確認する** | 器具に状態を問い合わせて、**実際にその状態になるまで再送**する。「送ったから成功」とは言わない |
+| 🌙 **常夜灯も操作・状態取得** | ⭐ 純正アプリは常夜灯の状態バイトを読んでいない。こちらは読んで反映する |
+| 🤝 **純正アプリと共存する** | 同時に使える。純正アプリでの操作も**観測して状態に反映**する |
+| 🔌 **HTTP API** | `curl -X POST http://<pi>:8080/on` だけで動く。自動化に組み込める |
 
-✅ **色温度を確定**（2026-07-26）。製品スペックの調色範囲は **電球色 2700K 〜 昼光色 6500K**、
-実機の目視で `color=0%` = 電球色。`target=all` の 1 通で **347 ms で収束確認**
-（`?wait=1` が HTTP 200）。**設定に仮定は残っていない。**
+<!-- ⚠️ スクリーンショット未撮影。撮影リストは docs/images/README.md -->
 
-✅ **Google Home から操作できるようになった**（2026-07-26）。
-Developer Console にテスト VID/PID を登録し、オンネットワーク commissioning で参加。
-「つけて」「15% にして」「電球色にして」が実機で動作。
+---
 
-⚠️ **commissioning 直後にブリッジを再起動してはいけない**（Nest ハブが配下の器具を失う
-既知バグを踏む）。一度これで失敗し、ストレージを消して再登録した。→ [07 M9](docs/07-matter.md)
+## 動かすまで
 
-| 項目 | 状況 |
+### 必要なもの
+
+| | |
 | --- | --- |
-| 解析ツール | ✅ adb 37.0.1 / jadx 1.5.6 / 自作 btsnoop パーサ |
-| 対象照明器具 | ✅ 実物あり |
-| Android 実機 | ✅ Pixel 9 / Android 17 |
-| 解析対象 APK | ✅ v1.9.36 (vc133) 取得・逆コンパイル済み |
-| プロトコル | ✅ **解明済み**（Pairlink SDK が難読化なしで同梱されていた） |
-| 実機 HCI ログ | ✅ 採取・検証済み（→ [C18](docs/02-protocol.md)） |
-| Raspberry Pi 3 | ✅ 常設・**自前実装で照明制御に成功**（→ [C19](docs/02-protocol.md)） |
-| 受信の暗号 | ✅ **完全に解明**（AES-128-ECB + PKCS#7 + XOR・→ [C23](docs/02-protocol.md)） |
-| 器具の状態取得 | ✅ **実現**（vAddr / グループ / ファーム / ON・明るさ・色温度） |
-| ナイトライト | ✅ 3 段階で切替 + **状態の読み戻しも可**（→ [C24](docs/02-protocol.md)） |
-| 他コントローラの追従 | ✅ 純正アプリの操作を平文で観測して反映（→ [C28](docs/02-protocol.md)） |
-| アドバタイズ / アドレス | ✅ 器具は**広告アドレス**で判定。Android でも問題なし（→ [C31](docs/02-protocol.md)） |
-| 器具ファームウェア | ◐ 暗号化なしだが独自コンテナで圧縮（→ [C25](docs/02-protocol.md)） |
-| **Matter ブリッジ** | ✅ **実装・Pi で稼働中・Google Home から操作可**（→ [07](docs/07-matter.md)） |
-| Android アプリ | ⏳ 未着手・**設計とスコープは確定**（→ [05](docs/analysis/05-app-design.md)） |
-| BLE スニファ | ⏸ 未手配（必要になったら nRF52840 Dongle を Pi に接続） |
+| Raspberry Pi | **Pi 3 以降**（BLE 内蔵）。Pi 3 の RAM 905 MB で 3 プロセスが共存する |
+| OS | Raspberry Pi OS（Debian 13 で確認）。Node.js 20 以降が apt から入ること |
+| 設置場所 | ⚠️ **照明器具の BLE が届くところ。**メッシュなので 1 台に届けば全体に流れる |
+| 8 桁 ID | 純正アプリのメニュー画面に `ID:12345678` と表示されている番号 |
+| 器具の登録 | ⭐ **純正アプリで済ませておく。**このプロジェクトは登録済みのメッシュに参加するだけ |
 
-### 解明したこと
+### ⭐ 8 桁 ID の調べ方
 
-1. **方式は GATT ベースのメッシュ**。**スマホが Peripheral（GATT サーバ）**になり、
-   器具が接続してきて、コマンドは `Handle Value Notification` で送る
-2. **照明制御コマンドを完全に解読**（明るさ・調色・グループ・シーン・センサー）
-   - `0xC0` はサブコマンド方式（色温度+明るさ / 常夜灯 / スポット / サイド RGB）
-   - **ON = 55 / OFF = 50** の特殊コード。それ以外はテーブル引き
-   - **状態応答も解読**（`0x70` 要求 → `0x71` 応答）。明るさコードは**逆順**
-   - コマンドはすべて絶対値指定 → **再送しても壊れない**
-3. **PDU フォーマット確定**（メッセージデータは最大 9 バイト）。しかも**平文**
-4. **認証は平文パスワードだけ**
-   - ⭐ **アプリの ID 表示 8 桁 = HOMEID 4 桁 + パスワード 4 桁**
-   - HOMEID は 10 進数の LE 4 バイト、パスワードは ASCII 4 バイト（変換方法が違う）
-   - ⭐ **`PERIPHERAL_LOGIN` には応答してはいけない**（応答すると器具に切断される）
-5. **不安定さの原因を確定** — セグメント再組み立てが欠落を検知せず、状態もリセットせず、
-   タイムアウトも持たない。さらに**各コマンドを 1 回しか送らない**（実機ログで実証）
-6. **器具のファームウェアが APK に同梱**（`assets/ota/*.mp3` は音声ではない）
-7. **器具は普段アドバタイズしない。**「スキャンする側」なので受動スキャンでは発見不可
+**純正アプリ（`jp.co.odelic.smt.remote10`）のメニュー画面に `ID:12345678` と
+表示されている 8 桁の番号**がそれ。上位 4 桁が HOMEID、下位 4 桁がメッシュの
+パスワードになっている（→ [02 C16](docs/02-protocol.md)）。
 
-### 検証環境
+⚠️ **入力ミスはすぐ判る。**器具が送ってくるログイン要求を復号して HOMEID が
+一致するか確認しているので、間違っていれば参加できない。
 
-| 環境 | 用途 |
+### インストール
+
+```bash
+git clone https://github.com/caliljp/odelic-re-connected.git
+cd odelic-re-connected
+sudo ./install.sh 12345678              # ← 自分の 8 桁 ID に置き換える
+```
+
+これで 3 つの systemd サービスが入って自動起動する。所要 5〜10 分（`npm` が遅い）。
+
+```bash
+sudo ./install.sh 12345678 --skip-matter    # Matter は要らない
+sudo ./install.sh 12345678 --skip-web       # 設定ページは要らない
+sudo ./install.sh 12345678 --with-backup    # ⭐ 毎日 03:30 に状態をバックアップ
+```
+
+⚠️ **`--with-backup` を勧める。**Matter の fabric 鍵とローカル CA の秘密鍵を失うと、
+**全端末で登録をやり直す**ことになる。
+
+→ 詳しい手順・Pi のセットアップから: [docs/06-raspberrypi-setup.md](docs/06-raspberrypi-setup.md)
+
+### 動作確認
+
+```bash
+curl -X POST http://localhost:8080/on
+curl -X POST http://localhost:8080/off
+curl -X POST 'http://localhost:8080/level?bright=60&color=50&wait=1'
+#   → HTTP 200  0.32s  detail=converged   ★ 器具が実際にその状態になったことを確認済み
+curl http://localhost:8080/devices        # 器具ごとの現在状態
+curl http://localhost:8080/metrics        # RTT 分布・到達率・リンク寿命
+```
+
+⚠️ 器具は広告開始から**約 5 秒**で接続してくる。直後に `503` が返るときは少し待つ。
+
+---
+
+## 3 つの成果物
+
+```
+install.sh          ← 一括インストーラ（下の 3 つを正しい順で入れる）
+odelicd/            ← ① ローカル API（Python・BLE を握る唯一のプロセス）
+common/             ← 共有パッケージ @odelic/common（プロトコル由来の事実）
+matter/             ← ② Matter ブリッジ（Node.js + matter.js）
+web/                ← ③ 設定ページとスマホ UI（Node.js・HTTPS）
+docs/               ← プロトコル文書と解析の記録
+```
+
+| | 中身 | 文書 |
+| --- | --- | --- |
+| ⭐ [`odelicd/`](odelicd/) | **BLE で照明を操作する常駐デーモン。**GATT サーバとして器具の接続を待ち、メッシュにコマンドを流す。HTTP API を提供する。⚠️ **BLE アダプタを握るのはこのプロセスだけ** | [06](docs/06-raspberrypi-setup.md) |
+| ⭐ [`matter/`](matter/) | **Matter ブリッジ。**照明を標準の Matter デバイスとして公開する。⭐ BLE は使わず `odelicd` の HTTP API だけを叩くので、アダプタの競合が起きない | [07](docs/07-matter.md) |
+| ⭐ [`web/`](web/) | **設定ページとスマホ UI。**HTTPS（ローカル CA + 自己署名）+ パスワード認証。照明の操作・器具名・Matter の状態・ログ閲覧・ホーム ID の変更 | [08](docs/08-web-ui.md) |
+| [`common/`](common/) | matter と web が共有する「プロトコル由来の事実」（明るさの段・器具の能力判定・MAC の正規化・JSONC） | [10](docs/10-development.md) |
+| [`backup.sh`](backup.sh) | ⚠️ 失うと復旧が重いもの（Matter の fabric 鍵・器具の名簿・CA の秘密鍵・設定）だけを取る | [07 M10c](docs/07-matter.md) |
+
+⚠️ **順序に意味がある**（`odelicd` → `matter` → `web`）。
+`file:../common` の参照も含めて、[docs/10-development.md](docs/10-development.md) に罠がまとまっている。
+
+---
+
+## 実測
+
+`btmon` の HCI トレースと内蔵計測（`GET /metrics`）で測った値。
+
+| | 純正アプリ | **これ** |
+| --- | --- | --- |
+| 起動〜操作可能 | 約 7 秒 | **0 秒**（常時接続維持） |
+| 1 操作の所要時間 | 不明・確認なし | **5〜8 ミリ秒** |
+| 効いたことの確認 | しない | **`?wait=1` で 277〜320 ms**（収束を確認して 200 / 未確認なら 504） |
+| 取りこぼし対策 | 送信 1 回のみ | **1 通送って状態応答で確認し、届くまで再送**（到達率 0.993〜1.000） |
+| リンクの維持 | — | 寿命 p50 **152 秒**（実装改善前は 7〜14 秒で切り合っていた） |
+| 状態要求の往復 | — | p50 **50〜78 ms** / p90 60〜92 ms / max 77〜117 ms |
+| 未接続のとき | 「接続成功」と表示する | **HTTP 503 + キューに保持**（接続した瞬間に流す） |
+| メモリ（Pi 3） | — | `odelicd` 37.8 MB + ブリッジ 125 MB + 設定ページ |
+
+⚠️ **不安定さの主犯は「こちら側の実装」だった。**3 つの前提が実測で覆った。
+
+| 判明したこと | 内容 |
 | --- | --- |
-| 開発機（Windows） | 静的解析・ドキュメント・ツール |
-| Android 実機（Pixel 9） | 純正アプリの HCI ログ採取。**照明から離れた場所** |
-| **Raspberry Pi 3**（`odelic-re-connected`） | **照明のそばに常設。自前実装の実行と `btmon` 観測** |
+| ⭐ **広告を出し続けると自壊する** | 新しいリンクが確立すると器具が古いリンクを 0.7〜1.4 秒後に切る（完全な交互）。メッシュは**コントローラ 1 台につきリンク 1 本**しか許さない。3 分で 22 回も参加し直していた → 参加後は接続の受け付けを止める |
+| ⭐ **BlueZ が接続を遅くしていた** | 器具は 15.00 / 28.75 ms を指定してくるのに、Linux が Connection Parameter Update Request を **65 本**送って **45 ms に書き換えていた** → `conn_min_interval` を下げて解決 |
+| ⭐ **3 連射は無駄だった** | 送信 1 通あたりの到達率は **0.993〜1.000**。「同じ PDU が二重に届く」現象も**自分の 3 連射が原因**だった |
 
-Pi は Tailscale 経由で SSH でき、`btmon` で完全な HCI トレースが取れる。
-Android の bugreport 経由（`btsnooz`）はスキャン結果がフィルタで欠落するが、
-Pi ならその制約がない。
+→ 詳細と測り方: [docs/02-protocol.md](docs/02-protocol.md) の C33
 
-詳細は [docs/analysis/04-analysis-procedure.md](docs/analysis/04-analysis-procedure.md) と
-[docs/06-raspberrypi-setup.md](docs/06-raspberrypi-setup.md) を参照。
+---
 
-## リポジトリ運用
+## ドキュメント
 
-- 解析対象の APK・逆コンパイル成果物・HCI ログは **リポジトリに含めない**（`.gitignore` 済み）
-  - 配布不可のバイナリであり、ログには端末固有情報が含まれるため
-  - 作業用の置き場は `artifacts/`（Git 管理外）
-- 解析から得た**知見**はドキュメントに、**コード**は実装ディレクトリに残す
+⭐ **このプロジェクトのもう一つの成果物は
+[通信プロトコルの文書](docs/02-protocol.md)（2900 行）。**
+PDU 形式・照明コマンドの全バイト・認証・暗号（送受信とも）・状態応答・
+通信戦略の実測まで、自前実装できる粒度で書いてある。
 
-## 法的な位置づけ
+| | |
+| --- | --- |
+| [docs/README.md](docs/README.md) | ⭐ **索引。**目的から引く |
+| [docs/02-protocol.md](docs/02-protocol.md) | 通信プロトコルの全容 |
+| [docs/06-raspberrypi-setup.md](docs/06-raspberrypi-setup.md) | Pi のセットアップと `odelicd` の運用 |
+| [docs/07-matter.md](docs/07-matter.md) | Matter 対応 |
+| [docs/08-web-ui.md](docs/08-web-ui.md) | 設定ページとスマホ UI |
+| [docs/10-development.md](docs/10-development.md) | ⚠️ ビルド順序・テストの罠・配備 |
+| [docs/analysis/](docs/analysis/) | 解析の記録（手順・失敗・打ち切った検討） |
 
-自身が所有する照明器具を相互運用（interoperability）するための解析。
-プロトコル知識をもとに独自実装を行うもので、純正アプリのコードやアセットを再配布しない。
+⭐ [docs/analysis/history.md](docs/analysis/history.md) には
+**5 回自信を持って間違えた記録**がある。同じ製品を解析する人には
+確定事項よりこちらが役に立つかもしれない。
+
+### テスト
+
+```bash
+(cd common && npm install && npm run build && npm test)   #  48 件
+(cd matter && npm install && npm test)                    # 114 件
+(cd web    && npm install && npm test)                    # 132 件
+```
+
+⭐ **BLE も Pi も要らない。**開発機で完結する（偽 `odelicd` を立てて検証する）。
+⚠️ `common` を**先にビルドする**必要がある。→ [docs/10-development.md](docs/10-development.md)
+
+---
+
+## ⚠️ 意図的に対応しないこと
+
+**壊すと壁スイッチからのやり直しになる操作は、解析できていても実装しない。**
+純正アプリに任せる。
+
+| 機能 | 理由 |
+| --- | --- |
+| **器具の登録・プロビジョニング**（ECDH / `SET_MESH_ENCRY`） | 破壊的。純正アプリに任せる |
+| **グループ設定の変更**（`0x30` / `0x31`） | 同上。**読み取りのみ**行う |
+| **HOMEID の発行・変更** | 破壊的（器具のローカルデータ削除 + メッシュ退出を伴う） |
+| タイマー / スケジュール | 中心機能に絞るため |
+| シーン（`0x40`〜`0x42`）/ センサー連携 | 同上 |
+
+⚠️ **これらの送信コマンドは実装に入れていない**（誤送信の余地を残さない）。
+プロトコル上の手がかりは [02 C7 / C15-5 / C15-10](docs/02-protocol.md) に残してある。
+
+⭐ 一方で **読み取りは全部できる。**器具一覧・vAddr・**グループ所属**・機種・
+ファームウェア・現在状態は、参加すれば自動で判る。
+引き継げないのは**器具の表示名と配置だけ**（純正アプリのローカル DB にしかない）。
+
+---
+
+## ⚠️ 秘密情報の扱い
+
+**8 桁 ID の下位 4 桁はメッシュのパスワード。**知られると
+**近隣の誰でもその照明を操作できる。**
+
+- リポジトリに出てくる `12345678`（HOMEID `1234` / パスワード `5678`）は
+  **すべてプレースホルダ。**実値は 1 箇所も書かれていない
+- 実値は `install.sh` の引数で渡し、**`/etc/default/odelicd`（0600 root）**に保存される
+- 解析ツールに渡すときは環境変数で:
+  ```bash
+  export ODELIC_ID=<実際の 8 桁 ID>       # docs/analysis/tools/decrypt_recv.py など
+  export ODELIC_HOMEID=<HOMEID の 10 進>  # adv_raw.sh
+  ```
+- ⚠️ **`backup.sh` の出力にはメッシュのパスワード・Matter の秘密鍵・
+  ローカル CA の秘密鍵が入る**（0600 root）。**そのまま他人に渡さない**
+- ⭐ **設定ページのログ画面は、パスワード・LOGINKEY / EVENTKEY・
+  Matter の登録コードを表示前に伏せる**（`web/src/mask.ts`。⚠️ 行ごと捨てず値だけ潰す）
+- ⚠️ HCI ログ（`*.btsnoop` / `*.log`）と APK・逆コンパイル成果物は
+  **リポジトリに含めない**（`.gitignore` 済み。置き場は Git 管理外の `artifacts/`）
+
+---
+
+## ライセンスと法的な位置づけ
+
+[MIT License](LICENSE)。
+
+自身が所有する照明器具を相互運用（interoperability）するための解析であり、
+**プロトコル知識をもとにした独自実装**。純正アプリのコードやアセットは
+一切含まず、再配布もしない。
+
+⚠️ ODELIC / Pairlink とは無関係の非公式プロジェクト。**自己責任で使うこと。**
+器具の登録情報を壊しうる操作は意図的に実装していないが、
+無保証であることは MIT の条文どおり。

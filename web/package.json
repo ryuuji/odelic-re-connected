@@ -12,6 +12,7 @@
     "build": "tsc",
     "test": "npm run clean && tsc && cd dist && node --test",
     "start": "node dist/src/main.js",
+    "demo": "node demo/serve.mjs",
     "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\""
   },
   "dependencies": {
