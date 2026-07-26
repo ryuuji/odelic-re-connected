@@ -45,4 +45,7 @@ npm-debug.log*
 # --- OS ---
 Thumbs.db
 Desktop.ini
-.DS_Storedist-test/
+.DS_Store
+
+# TypeScript のテスト用ビルド出力
+dist-test/
