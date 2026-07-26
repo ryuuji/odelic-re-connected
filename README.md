@@ -4,9 +4,10 @@
 [![Platform: Raspberry Pi 3+](https://img.shields.io/badge/platform-Raspberry%20Pi%203%2B-c51a4a?logo=raspberrypi&logoColor=white)](docs/06-raspberrypi-setup.md)
 [![Matter](https://img.shields.io/badge/Matter-Google%20Home%20%7C%20Apple%20Home%20%7C%20Alexa-1a7f37)](docs/07-matter.md)
 
+[「CONNECTED LIGHTING for HOME」](https://www.odelic.co.jp/products/connectedlighting/app/)に対応した照明器具を、Raspberry Pi から操作するためのツールキットです。
+
 ![](docs/images/cover.png)
 
-[「CONNECTED LIGHTING for HOME」](https://www.odelic.co.jp/products/connectedlighting/app/)に対応した照明器具を、Raspberry Pi から操作するためのツールキットです。
 
 Google Home / Apple Home / Alexa から音声で操作したり、スマートフォンからブラウザで操作できるようになります。不安定な公式アプリに依存せず、ODELIC 製品を活用できるようになります。プロトコルの解析結果もすべて公開します。
 
