@@ -16,11 +16,10 @@
 export const MATTER_LEVEL_MIN = 1;
 export const MATTER_LEVEL_MAX = 254;
 
-/** 主灯の段数。`bright` は 5, 10, … 100 の 20 段（C15-9）。 */
-export const MAIN_STEPS = 20;
-
-/** 常夜灯の段数。器具値 1 / 2 / 3（3 が最も明るい・C24-6）。 */
-export const NIGHT_STEPS = 3;
+// ⭐ 段の定義（主灯 20 段・常夜灯 3 段・器具値の反転）は odelic-web と共有する。
+//    ここに残すのは **Matter 固有の量子化**（CurrentLevel 1〜254 / mired）だけ。
+export { MAIN_STEPS, NIGHT_STEPS, nightDeviceToLevel, nightLevelToDevice } from "@odelic/common";
+import { MAIN_STEPS, NIGHT_STEPS, nightDeviceToLevel, nightLevelToDevice } from "@odelic/common";
 
 /** 器具 1 台の明るさ軸の作り方。 */
 export interface LightScale {
@@ -88,16 +87,6 @@ export function nightBandTop(scale: LightScale): number {
     // 常夜灯 3 段と主灯 20 段のどちらも潰さない範囲に収める。
     // 下限を NIGHT_STEPS にしておかないと 3 段を区別できる level が無くなる
     return clamp(top, NIGHT_STEPS, MATTER_LEVEL_MAX - MAIN_STEPS);
-}
-
-/** 器具が返す常夜灯の値（1〜3）→ odelicd `/night?level=` の値（0〜2）。C24-6 で反転する。 */
-export function nightDeviceToLevel(deviceValue: number): 0 | 1 | 2 {
-    return clamp(3 - deviceValue, 0, 2) as 0 | 1 | 2;
-}
-
-/** odelicd `/night?level=` の値（0〜2）→ 器具が返す値（3〜1）。 */
-export function nightLevelToDevice(level: number): number {
-    return clamp(3 - level, 1, 3);
 }
 
 /**

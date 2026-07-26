@@ -25,7 +25,7 @@
 import { Endpoint, ServerNode, VendorId } from "@matter/main";
 import { AggregatorEndpoint } from "@matter/main/endpoints/aggregator";
 
-import { capabilityOf } from "./capability.js";
+import { capabilityOf } from "@odelic/common";
 import {
     type Config,
     colorScaleOf,

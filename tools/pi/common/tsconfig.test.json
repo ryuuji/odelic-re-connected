@@ -1,0 +1,10 @@
+{
+  // テスト実行用。src とテストの両方をコンパイルし、⭐ 型宣言は出さない。
+  // （出すと `*.test.d.ts` がテストとして実行され、テスト数が水増しされる）
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "dist-test",
+    "declaration": false
+  },
+  "include": ["src/**/*.ts", "test/**/*.ts"]
+}

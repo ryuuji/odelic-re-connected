@@ -7,7 +7,7 @@
 
 import { readFileSync } from "node:fs";
 
-import type { CapabilityOverride, MatterLightKind } from "./capability.js";
+import type { CapabilityOverride, MatterLightKind } from "@odelic/common";
 import type { ColorScale, LightScale } from "./mapping.js";
 
 export interface FixtureConfig extends CapabilityOverride {

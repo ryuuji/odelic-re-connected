@@ -22,7 +22,7 @@ import { ColorControl } from "@matter/main/clusters/color-control";
 import { ColorTemperatureLightDevice } from "@matter/main/devices/color-temperature-light";
 import { DimmableLightDevice } from "@matter/main/devices/dimmable-light";
 
-import type { Capability } from "./capability.js";
+import type { Capability } from "@odelic/common";
 import { defaultFixtureName, macToEndpointId, normalizeMac } from "./config.js";
 import type { OdelicDevice } from "./odelicd.js";
 import {

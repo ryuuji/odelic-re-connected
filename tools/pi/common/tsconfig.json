@@ -1,0 +1,28 @@
+{
+  // 配布用のビルド。⭐ src だけを対象にして型宣言を出す（matter / web が参照する）。
+  //
+  // ⚠️ テストをここに含めてはいけない。`declaration: true` が
+  //    `dist/test/*.test.d.ts` を吐き、Node のテストランナーが**それをテストとして実行**して
+  //    しまう（中身が空なので通るため、テスト数が水増しされて信用できなくなる）。
+  //    実際にローカルで 2 件の幻のテストが数えられていた。
+  //    テストの実行は tsconfig.test.json を使う。
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+
+    "rootDir": ".",
+    "outDir": "dist",
+
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+
+    "declaration": true,
+    "sourceMap": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true
+  },
+  "include": ["src/**/*.ts"]
+}

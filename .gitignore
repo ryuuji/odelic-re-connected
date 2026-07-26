@@ -45,4 +45,4 @@ npm-debug.log*
 # --- OS ---
 Thumbs.db
 Desktop.ini
-.DS_Store
+.DS_Storedist-test/

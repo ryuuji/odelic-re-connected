@@ -10,12 +10,13 @@
   },
   "scripts": {
     "build": "tsc",
-    "test": "tsc && cd dist && node --test",
+    "test": "npm run clean && tsc && cd dist && node --test",
     "start": "node dist/src/main.js",
     "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\""
   },
   "dependencies": {
-    "@matter/main": "^0.17.6"
+    "@matter/main": "^0.17.6",
+    "@odelic/common": "file:../common"
   },
   "devDependencies": {
     "@types/node": "^20.19.9",

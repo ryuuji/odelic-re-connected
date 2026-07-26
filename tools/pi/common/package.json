@@ -1,0 +1,30 @@
+{
+  "name": "@odelic/common",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "odelic-matter と odelic-web が共有する「プロトコル由来の事実」。器具の能力判定と明るさの段の定義。二重に持つと必ずずれるものだけを置く",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "clean": "node -e \"for (const d of ['dist','dist-test']) require('node:fs').rmSync(d,{recursive:true,force:true})\"",
+    "test": "npm run clean && tsc -p tsconfig.test.json && cd dist-test && node --test"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.9",
+    "typescript": "^5.9.3"
+  }
+}
