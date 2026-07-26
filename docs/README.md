@@ -4,7 +4,9 @@
 
 | やりたいこと | 読むもの |
 | --- | --- |
-| Raspberry Pi に入れる | [../README.md](../README.md) のクイックスタート → [06-raspberrypi-setup.md](06-raspberrypi-setup.md) |
+| ⭐ Pi を用意するところから入れる | [00-quickstart.md](00-quickstart.md) |
+| Pi は動いている。入れ方だけ知りたい | [../README.md](../README.md) の「インストール」 |
+| Pi 上での運用・手動での配置 | [06-raspberrypi-setup.md](06-raspberrypi-setup.md) |
 | ⭐ プロトコルを知る・別の環境に移植する | [02-protocol.md](02-protocol.md) |
 | `odelicd` の HTTP API を使う | [06-raspberrypi-setup.md](06-raspberrypi-setup.md) の P5〜P7 |
 | Google Home / Apple Home / Alexa から操作する | [07-matter.md](07-matter.md) |
@@ -18,8 +20,9 @@
 
 | ファイル | 内容 |
 | --- | --- |
+| [00-quickstart.md](00-quickstart.md) | 利用者向け。Pi の箱を開けてから照明が点くまでの 6 ステップ。⚠️ 手順を書き写さず README の各節に送る |
 | ⭐ [02-protocol.md](02-protocol.md) | 通信プロトコルの全容（2900 行）。PDU 形式・照明コマンド・認証・暗号・状態応答・通信戦略の実測。このプロジェクトの中心的な成果 |
-| [06-raspberrypi-setup.md](06-raspberrypi-setup.md) | Pi のセットアップと `odelicd` の運用（HTTP API・計測・常用コマンド） |
+| [06-raspberrypi-setup.md](06-raspberrypi-setup.md) | ⚠️ **解析と検証の記録**（P0〜P7）。Pi のセットアップと `odelicd` の運用（HTTP API・計測・常用コマンド）。初めて入れる人には [00](00-quickstart.md) を見せる |
 | [07-matter.md](07-matter.md) | Matter 対応。明るさ 1 軸への常夜灯の畳み込み、色温度、commissioning、踏んだ落とし穴 |
 | [08-web-ui.md](08-web-ui.md) | 設定ページとスマホ UI（`odelic-web`）の設計。HTTPS・認証・ログのマスク |
 | [10-development.md](10-development.md) | ⚠️ ビルド順序とテストの罠、実機への配備。最初に読むと詰まらない |
@@ -49,6 +52,9 @@
 `01`〜`10` のうち成果物側が `02` `06` `07` `08` `10`、解析側が `01` `03` `04` `05` `09`。
 **解析当時の通し番号をそのまま維持している。** 本文中に `[02 C33]` `[03 I7]` `[07 M9]`
 という形の相互参照が多数あり、番号を振り直すと文章のほうが壊れるため。
+
+⭐ `00` だけは解析当時の番号ではない。**公開後に足した利用者向けの入口**で、
+一覧の先頭に来るように `00` にしてある。相互参照は張られていない。
 
 ---
 

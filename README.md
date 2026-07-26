@@ -1,7 +1,7 @@
-# odelic-re-connected
+# ODELIC Re-Connected
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Platform: Raspberry Pi 3+](https://img.shields.io/badge/platform-Raspberry%20Pi%203%2B-c51a4a?logo=raspberrypi&logoColor=white)](docs/06-raspberrypi-setup.md)
+[![Platform: Raspberry Pi 3+](https://img.shields.io/badge/platform-Raspberry%20Pi%203%2B-c51a4a?logo=raspberrypi&logoColor=white)](docs/00-quickstart.md)
 [![Matter](https://img.shields.io/badge/Matter-Google%20Home%20%7C%20Apple%20Home%20%7C%20Alexa-1a7f37)](docs/07-matter.md)
 
 [「CONNECTED LIGHTING for HOME」](https://www.odelic.co.jp/products/connectedlighting/app/)に対応した照明器具を、Raspberry Pi から操作するためのツールキットです。
@@ -92,6 +92,9 @@ Google Home / Apple Home / Alexa から音声で操作したり、スマート�
 
 Raspberry Pi に SSH でログインして、1 行貼るだけです。
 
+⭐ Pi を用意するところからなら → [docs/00-quickstart.md](docs/00-quickstart.md)
+（OS の書き込みから照明が点くまで、30 分ほどです）
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/ryuuji/odelic-re-connected/main/bootstrap.sh | sudo sh -s -- 12345678
 ```
@@ -126,7 +129,8 @@ sudo ./install.sh 12345678 --skip-matter   # 音声操作は使わない
 sudo ./install.sh 12345678 --skip-web      # 設定ページは使わない
 ```
 
-→ 手動で入れる手順や Pi の初期設定から: [docs/06-raspberrypi-setup.md](docs/06-raspberrypi-setup.md)
+→ Pi の初期設定から: [docs/00-quickstart.md](docs/00-quickstart.md)
+→ 手動で入れる手順: [docs/06-raspberrypi-setup.md](docs/06-raspberrypi-setup.md)
 
 ### アップデート
 
@@ -138,13 +142,13 @@ curl -fsSL https://raw.githubusercontent.com/ryuuji/odelic-re-connected/main/boo
 
 設定と登録情報はそのまま残ります。**やり直しになるものはありません。**
 
-| 残るもの | 内容 |
-| --- | --- |
-| Matter の登録 | Google Home / Apple Home / Alexa の再追加は不要です |
-| 器具の名前・ケルビン設定 | `/etc/odelic-matter/config.json` を残します |
-| 設定ページのパスワード | 変わりません（新しいパスワードは表示されません） |
-| HTTPS の証明書 | ⭐ CA を作り直さないので、スマートフォンの再設定は不要です |
-| API の公開範囲 | localhost / LAN の選択を引き継ぎます |
+| 残るもの | 内容                                                    |
+| --- |---------------------------------------------------------|
+| Matter の登録 | Google Home / Apple Home / Alexa の再追加は不要です     |
+| 器具の名前・ケルビン設定 | `/etc/odelic-matter/config.json` を残します             |
+| 設定ページのパスワード | 変わりません（新しいパスワードは表示されません）        |
+| HTTPS の証明書 | CA を作り直さないので、スマートフォンの再設定は不要です |
+| API の公開範囲 | localhost / LAN の選択を引き継ぎます                    |
 
 ⚠️ 8 桁 ID を渡し忘れる、または別の値を渡すと `/etc/default/odelicd` が
 その値で書き換わります。**同じ ID を渡してください。**
@@ -257,7 +261,7 @@ Google Home アプリからも、標準の照明として明るさと色温度�
 
 ZIP がスマートフォンや PC に保存されます。復元は同じ画面からその ZIP を選ぶだけです。
 
-⚠️⚠️ **この ZIP は他人に渡さないでください。** メッシュのパスワード、Matter の秘密鍵、
+⚠️**この ZIP は他人に渡さないでください。** メッシュのパスワード、Matter の秘密鍵、
 ローカル CA の秘密鍵が入っています。渡すと照明を操作され、偽サイトも作られます。
 
 ---
@@ -298,7 +302,7 @@ curl http://localhost:8080/metrics     # 応答時間・到達率
 `?wait=1` を付けると、器具が実際にその状態になったことを確認してから返ります
 （実測 277〜320 ms）。確認できなければ `504`、まだつながっていなければ `503` です。
 
-⚠️⚠️ **既定では同じ Pi の中からしか叩けません。** この API に認証は無く、
+⚠️**既定では同じ Pi の中からしか叩けません。** この API に認証は無く、
 LAN に出すと同じネットワークにいる誰でも照明を操作できるためです。
 
 別のマシンから叩きたい場合は、設定ページ →「設定」→「API の公開範囲」で
