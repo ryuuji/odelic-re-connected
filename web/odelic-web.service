@@ -1,6 +1,6 @@
 [Unit]
 Description=ODELIC lighting web UI (settings page and phone UI)
-Documentation=https://github.com/caliljp/odelic-re-connected
+Documentation=https://github.com/ryuuji/odelic-re-connected
 # odelicd に照明操作を投げ、ブリッジの管理 API で器具名と Matter を読み書きする。
 # ⭐ どちらも落ちていても起動する（照明の操作は odelicd さえ生きていればできる）
 After=network-online.target odelicd.service odelic-matter.service

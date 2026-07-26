@@ -1,6 +1,6 @@
 [Unit]
 Description=ODELIC Matter bridge (exposes odelicd lights to Matter)
-Documentation=https://github.com/caliljp/odelic-re-connected
+Documentation=https://github.com/ryuuji/odelic-re-connected
 # odelicd の HTTP API に依存する。落ちていても起動はする（503 を返して待つ）
 After=network-online.target odelicd.service
 Wants=odelicd.service

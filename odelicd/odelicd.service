@@ -1,6 +1,6 @@
 [Unit]
 Description=ODELIC CONNECTED LIGHTING control daemon
-Documentation=https://github.com/caliljp/odelic-re-connected
+Documentation=https://github.com/ryuuji/odelic-re-connected
 After=bluetooth.service network-online.target
 Requires=bluetooth.service
 

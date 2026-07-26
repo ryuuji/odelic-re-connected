@@ -53,7 +53,7 @@ install_timer() {
     cat > /etc/systemd/system/odelic-backup.service <<EOF
 [Unit]
 Description=Backup ODELIC lighting state (Matter fabric, roster, config)
-Documentation=https://github.com/caliljp/odelic-re-connected
+Documentation=https://github.com/ryuuji/odelic-re-connected
 
 [Service]
 Type=oneshot

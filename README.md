@@ -52,7 +52,7 @@ sudo ./install.sh 12345678      # 純正アプリのメニュー画面に出て�
 ### インストール
 
 ```bash
-git clone https://github.com/caliljp/odelic-re-connected.git
+git clone https://github.com/ryuuji/odelic-re-connected.git
 cd odelic-re-connected
 sudo ./install.sh 12345678              # ← 自分の 8 桁 ID に置き換える
 ```
