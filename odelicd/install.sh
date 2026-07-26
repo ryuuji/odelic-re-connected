@@ -102,6 +102,72 @@ fi
 install -m 0644 "$SRC/odelicd.service" /etc/systemd/system/odelicd.service
 echo "  /etc/systemd/system/odelicd.service"
 
+# ------------------------------------------------- BLE の接続パラメータ（P7）
+#
+# ⚠️⚠️ **これを入れないと BlueZ が器具の接続を遅くする。**
+#    器具は Connection Interval 15.00 / 28.75 ms を指定してくるのに、Linux は
+#    「短すぎる」と判断して Connection Parameter Update Request を送り、
+#    **45 ms に書き換えてしまう**（実測 65/65 本・器具は全部受理してしまう）。
+#    → 下限を 7.5 ms（= 6 × 1.25 ms）まで下げておけば CPUR そのものが出ない。
+#    リンク寿命 7〜14 秒 → 6.8 分以上、RTT の max 449 → 77 ms。→ docs/06 P7・docs/02 C33
+#
+# ⭐ 恒久化（main.conf）と即時反映（debugfs）の両方をやる。
+# ⚠️ main.conf の反映には bluetoothd の再起動が要るが、**ここでは再起動しない。**
+#    odelicd は `Requires=bluetooth.service` なので道連れで落ちる。
+#    ⭐ 代わりに debugfs へ直接書いて、今動いているアダプタに効かせる
+#    （新しい接続から適用される。この直後に odelicd を再起動するので間に合う）。
+
+echo
+echo "=== BLE の接続パラメータ ==="
+BT_CONF=/etc/bluetooth/main.conf
+WANT_MIN_INTERVAL=6          # 6 × 1.25 ms = 7.5 ms
+
+if [ ! -f "$BT_CONF" ]; then
+    echo "  ⚠️ $BT_CONF がありません。恒久化を飛ばします（bluez の版が違う？）"
+else
+    # 有効行（コメントでない）に既に値があるか
+    CUR="$(sed -n 's/^[[:space:]]*MinConnectionInterval[[:space:]]*=[[:space:]]*\([0-9][0-9]*\).*/\1/p' "$BT_CONF" | head -n1)"
+    if [ -n "$CUR" ] && [ "$CUR" -le "$WANT_MIN_INTERVAL" ]; then
+        echo "  MinConnectionInterval=$CUR（設定済み。触りません）"
+    elif [ -n "$CUR" ]; then
+        # ⚠️ 意図して別の値を入れている可能性がある。⭐ 黙って上書きしない
+        echo "  ⚠️ MinConnectionInterval=$CUR です（$WANT_MIN_INTERVAL 以下を推奨）。"
+        echo "     手で設定した値と判断して**変更しません**。速さが要るなら:"
+        echo "       sudo sed -i 's/^MinConnectionInterval=.*/MinConnectionInterval=$WANT_MIN_INTERVAL/' $BT_CONF"
+    else
+        # ⚠️ 素の Raspberry Pi OS は `#MinConnectionInterval=`（値なしのコメント行）。
+        #    ⭐ 行ごと無い版もありうるので、その場合は [LE] セクションを作って足す
+        if grep -q '^[[:space:]]*#[[:space:]]*MinConnectionInterval[[:space:]]*=' "$BT_CONF"; then
+            sed -i "0,/^[[:space:]]*#[[:space:]]*MinConnectionInterval[[:space:]]*=.*/s//MinConnectionInterval=$WANT_MIN_INTERVAL/" "$BT_CONF"
+        elif grep -q '^\[LE\]' "$BT_CONF"; then
+            sed -i "0,/^\[LE\]/s//[LE]\nMinConnectionInterval=$WANT_MIN_INTERVAL/" "$BT_CONF"
+        else
+            printf '\n[LE]\nMinConnectionInterval=%s\n' "$WANT_MIN_INTERVAL" >> "$BT_CONF"
+        fi
+        # ⚠️ sed が空振りしても終了ステータスは 0。⭐ 書けたことを必ず確かめる
+        if grep -q "^MinConnectionInterval=$WANT_MIN_INTERVAL" "$BT_CONF"; then
+            echo "  $BT_CONF に MinConnectionInterval=$WANT_MIN_INTERVAL を設定しました"
+        else
+            echo "  ⚠️ $BT_CONF を書き換えられませんでした。手で [LE] に足してください:"
+            echo "       MinConnectionInterval=$WANT_MIN_INTERVAL"
+        fi
+    fi
+fi
+
+# ⭐ 即時反映。⚠️ debugfs が無い／読めない環境（未マウント・LXC など）では黙って諦める。
+#    アダプタは odelicd が D-Bus で見つける（hci0 とは限らない）ので全部に書く
+applied=0
+for f in /sys/kernel/debug/bluetooth/hci*/conn_min_interval; do
+    [ -w "$f" ] || continue
+    if echo "$WANT_MIN_INTERVAL" > "$f" 2>/dev/null; then
+        echo "  即時反映: $f = $WANT_MIN_INTERVAL"
+        applied=1
+    fi
+done
+if [ "$applied" = 0 ]; then
+    echo "  ⭐ 即時反映は飛ばしました（debugfs が使えません）。次回の再起動で効きます"
+fi
+
 echo
 echo "=== サービスの登録 ==="
 # 検証用に作った一時ユニットが残っていたら止める

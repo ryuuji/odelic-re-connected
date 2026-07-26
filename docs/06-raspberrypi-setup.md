@@ -680,6 +680,10 @@ python docs/analysis/tools/btsnoop.py timeline artifacts\pi.btsnoop
 
 ### ⭐ 必須の OS 設定（これをしないと BlueZ が接続を遅くする）
 
+⭐ **2026-07-27 以降、`odelicd/install.sh` がこれを自動で行う**（恒久化と即時反映の両方）。
+以下は手で入れていた当時の記録。既に別の値が入っている場合はインストーラが触らないので、
+その場合だけ下の手順が要る。
+
 器具は Connection Interval **15.00 / 28.75 ms** を指定してくるのに、
 Linux は「短すぎる」と判断して `Connection Parameter Update Request` を送り、
 **45 ms に書き換えてしまう**（実測 65/65 本・器具は全部受理）。
