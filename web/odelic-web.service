@@ -44,8 +44,27 @@ ProtectKernelTunables=true
 ProtectKernelModules=true
 ProtectControlGroups=true
 RestrictSUIDSGID=true
-# ⚠️ TLS の鍵と設定は読むだけ（書き込みは StateDirectory へ）
-ReadOnlyPaths=/etc/odelic-web
+
+# ⚠️⚠️ **sudo は名前空間を抜けられない。**
+#    `ProtectSystem=strict` は全体を読み取り専用でマウントするので、
+#    **sudo で root になった特権ヘルパーにも効く。**ここに挙げないと
+#    「公開範囲の切り替え」「ホーム ID の変更」「バックアップの復元」が
+#      mktemp: failed to create file via template
+#      '/etc/default/.odelicd.XXXXXX': Read-only file system
+#    で失敗する（実際に踏んだ）。⚠️ root なのに EROFS なので原因が分かりにくい。
+#
+# ⭐ **守っているのは名前空間ではなく DAC のほう。** 下記はどれも
+#    odelic-web(uid 997) からは書けない:
+#      /etc/default /etc/odelic-web … root:root 0755（作成できるのは root だけ）
+#      /etc/odelic-matter           … odelic-matter 所有
+#      /var/lib/odelicd             … root:root 0700
+#      /var/lib/odelic-matter       … odelic-matter 0700（読むこともできない）
+#    → ここを書き換えられるのは **sudoers で許した 3 本のヘルパーだけ**。
+#    ⚠️ だからこの行を足しても設定ページ本体にできることは増えない。
+#
+# ⚠️ `/etc/odelic-web`（ローカル CA の鍵）は以前 ReadOnlyPaths に入れていたが、
+#    バックアップの復元がここへ書くので外した。上のとおり DAC で守られている。
+ReadWritePaths=/etc/default /etc/odelic-matter /etc/odelic-web /var/lib/odelicd /var/lib/odelic-matter
 # ⚠️ AF_NETLINK が要る（Node の os.networkInterfaces() が使う）
 RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
 

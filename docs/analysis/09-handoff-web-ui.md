@@ -311,6 +311,23 @@ matter.js のバージョンが勝手に上がりかねない。
     → `application/x-x509-ca-cert` にした（テストで固定）
 17. ⚠️ NEW: `/opt` のサービスユーザーにはホームが無いので `npx` が使えない
     （`EACCES: mkdir '/home/odelic-web'`）。手で再ビルドせず `install.sh` を通す
+18. ⚠️⚠️ **NEW: `sudo` は名前空間を抜けられない。**
+    `odelic-web.service` の `ProtectSystem=strict` は、**sudo で root になった
+    特権ヘルパーにも効く。** 設定ページから公開範囲を切り替えると
+
+        mktemp: failed to create file via template
+        '/etc/default/.odelicd.XXXXXX': Read-only file system
+
+    ⚠️ **root なのに `EROFS`** なので原因が分かりにくい。ファイルシステム自体は
+    正常で、`sudo touch` は SSH からなら通る。名前空間の中だけで読み取り専用。
+    → `ReadWritePaths=` に書き込み先を列挙した。
+    ⭐ **守っているのは名前空間ではなく DAC のほう**（`/etc/default` は
+    root:root 0755、`/var/lib/*` は 0700 なので `odelic-web` からは書けない）。
+    実機で `nsenter` + `setpriv` で両方を確かめた。
+    - ⚠️ **同じ原因で 3 つ壊れていた。** 公開範囲の切り替え・ホーム ID の変更・
+      **バックアップの復元**（バックアップの取得は読むだけなので動いていた）
+    - ⚠️ 復元が書く `/etc/odelic-web`（ローカル CA の鍵）は `ReadOnlyPaths` に
+      入れていたので外した
 
 ---
 
