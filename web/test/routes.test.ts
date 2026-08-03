@@ -630,6 +630,21 @@ describe("/api/state", () => {
         assert.equal(f.rungIndex, null);
     });
 
+    it("⭐⭐ 同じ器具が 2 つの vAddr で見えてもカードは 1 枚（C34）", async () => {
+        // ⚠️ 他のリモコンが繋がっていると同じ MAC が 2 行来る。片方は永久に応答せず
+        //    absent になるので、畳まないと同じ照明が 2 枚並び、片方が「反応なし」と嘘をつく
+        odelicd.devices.push({ ...odelicd.devices[0]!, key: "0B 00 00 00" });
+        odelicd.absent.add("0B 00 00 00");
+        const cookie = await login();
+        const s = (await (await get("/api/state", cookie)).json()) as {
+            fixtures: Array<{ key: string; mac: string; online: boolean }>;
+        };
+        const same = s.fixtures.filter(f => f.mac === "EC:C5:7F:81:DE:CD");
+        assert.equal(same.length, 1, JSON.stringify(s.fixtures));
+        assert.equal(same[0]!.key, "09 00 00 00", "応答している vAddr を残す");
+        assert.equal(same[0]!.online, true, "生きている器具を「反応なし」にしてはいけない");
+    });
+
     it("odelicd に届かなければ理由を出す", async () => {
         const handlerBase = base;
         odelicd.connected = false;

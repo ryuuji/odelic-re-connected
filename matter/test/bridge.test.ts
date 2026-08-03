@@ -739,6 +739,92 @@ describe("通電切れの検知を早める（追い打ちの状態要求）", (
 });
 
 /**
+ * ⭐⭐ 同じ器具が 2 つの vAddr で見えるとき（C34）。
+ *
+ * 他のリモコンがメッシュに繋がっていると、odelicd の器具一覧に **同じ MAC が 2 行**
+ * 現れる。片方は永久に状態要求へ応答しないので到達率 0%（`absent`）になる。
+ * 畳まずに回すと、後から来た幽霊が上書きして
+ * **生きている照明が Google Home から「反応なし」になる**（実機で発生）。
+ */
+describe("同じ MAC が 2 つの vAddr で見えるとき（C34）", () => {
+    const stub = new StubOdelicd();
+    let bridge: Bridge;
+    let storageDir: string;
+
+    before(async () => {
+        storageDir = mkdtempSync(join(tmpdir(), "odelic-matter-dup-"));
+        process.env.MATTER_STORAGE_PATH = storageDir;
+        // ⚠️ 幽霊を先に並べる。並び順に助けられて通るテストにしない
+        stub.devices = [
+            ceilingLight("05000000", MAC_A, 0),
+            ceilingLight("01000000", MAC_A, 0),
+            ceilingLight("02000000", MAC_B, 1),
+        ];
+        stub.absent.add("05000000");
+        await stub.listen();
+        const config: Config = {
+            ...DEFAULT_CONFIG,
+            odelicd: stub.baseUrl,
+            pollMs: 50,
+            waitMs: 0,
+            statusRefreshSec: 0,
+            matter: { ...DEFAULT_CONFIG.matter, port: 5604, storagePath: storageDir, discriminator: 3844 },
+            fixtures: { [MAC_A]: { name: "手前の照明" }, [MAC_B]: { name: "奥の照明" } },
+        };
+        bridge = new Bridge({ config, log: msg => { if (process.env.BRIDGE_TEST_LOG) console.log(`    | ${msg}`); } });
+        await bridge.start();
+        await waitFor("2 台そろう", () => bridge.fixtureOf(MAC_A) !== undefined && bridge.fixtureOf(MAC_B) !== undefined);
+    });
+
+    after(async () => {
+        await bridge?.stop();
+        await stub.close();
+        rmSync(storageDir, { recursive: true, force: true });
+        cleanupMatterStorage();
+    });
+
+    it("⭐ エンドポイントは 2 個（1 台を 2 台に増やさない）", () => {
+        assert.equal(bridge.describe().length, 3, bridge.describe().join(" / "));
+    });
+
+    it("⭐⭐ 生きている照明を「反応なし」にしない", async () => {
+        await waitFor(
+            "応答している vAddr が採用される",
+            () => bridge.fixtureOf(MAC_A)!.vaddrKey === "01000000",
+            8000,
+        );
+        assert.equal(
+            bridge.fixtureOf(MAC_A)!.endpoint.state.bridgedDeviceBasicInformation.reachable,
+            true,
+            "幽霊の vAddr が absent でも、生きている器具は Reachable のまま",
+        );
+    });
+
+    it("個別の操作は応答する vAddr に飛ぶ（幽霊に投げない）", async () => {
+        await waitFor("応答する vAddr に切り替わる", () => bridge.fixtureOf(MAC_A)!.vaddrKey === "01000000", 8000);
+        await quiesce(stub);
+        await bridge.fixtureOf(MAC_A)!.endpoint.set({ onOff: { onOff: false } });
+        await waitFor("コマンドが飛ぶ", () => stub.commands().length > 0);
+        await new Promise(r => setTimeout(r, 400));
+        assert.equal(stub.commands()[0]!.params.target, "dev:01000000");
+    });
+
+    it("⭐ 両方の vAddr が absent になったら、そのときは Reachable = false", async () => {
+        stub.absent.add("01000000");
+        await waitFor(
+            "本当に通電が切れたときは下がる",
+            () => bridge.fixtureOf(MAC_A)!.endpoint.state.bridgedDeviceBasicInformation.reachable === false,
+            15000,
+        );
+        assert.equal(
+            bridge.fixtureOf(MAC_B)!.endpoint.state.bridgedDeviceBasicInformation.reachable,
+            true,
+            "もう片方を巻き込んではいけない",
+        );
+    });
+});
+
+/**
  * ⭐⭐ 一番守りたいシナリオ。
  *
  * 「壁スイッチで片方を消したまま Pi が再起動する」= odelicd の器具一覧に

@@ -7,6 +7,7 @@
  * | --- | --- |
  * | 製品コード → 器具の能力（`capability.ts`） | Matter 固有の量子化（level 1〜254 / mired） |
  * | 明るさの段の定義（`ladder.ts`） | 器具名・名簿（ブリッジが所有） |
+ * | 器具一覧を MAC ごとに畳む（`devices.ts`） | 器具の並び順（画面ごとに違う） |
  * | MAC の正規化（`mac.ts`） | HTTP クライアント（用途が違うので各自） |
  * | 設定ファイルの JSONC パーサ（`jsonc.ts`） | 設定の項目そのもの（サービスごとに違う） |
  *
@@ -16,6 +17,7 @@
  */
 
 export * from "./capability.js";
+export * from "./devices.js";
 export * from "./jsonc.js";
 export * from "./ladder.js";
 export * from "./mac.js";

@@ -30,7 +30,7 @@ import { DeviceCommissioner } from "@matter/protocol";
 import { AggregatorEndpoint } from "@matter/main/endpoints/aggregator";
 import { QrCode } from "@matter/types/schema";
 
-import { capabilityOf } from "@odelic/common";
+import { capabilityOf, foldDevicesByMac, foldedAwayKeys } from "@odelic/common";
 import {
     type Config,
     colorScaleOf,
@@ -115,6 +115,8 @@ export class Bridge {
      * 「最後の状態でオンライン」のまま残る**。
      */
     private absent = new Set<string>();
+    /** 同じ MAC で二重に見えて畳んだ vAddr（C34）。ログを 1 回だけ出すための記憶 */
+    private readonly foldedKeys = new Set<string>();
     /** `/metrics` は毎回引く必要がない（absent は 3 回の取りこぼしで決まる） */
     private pollTick = 0;
     /** `GET /events` の続きを読む位置（unix 秒） */
@@ -415,6 +417,8 @@ export class Bridge {
         for (const e of res.events) {
             const key = e.vaddr?.toUpperCase();
             if (key === undefined || this.absent.has(key)) continue;
+            // ⚠️ 二重に見えていた vAddr（C34）は追い打ちしても無駄。BLE を使わない
+            if (this.foldedKeys.has(key)) continue;
             if (now - (this.lastFastProbe.get(key) ?? 0) < FAST_PROBE_COOLDOWN_MS) continue;
             suspects.add(key);
         }
@@ -439,12 +443,22 @@ export class Bridge {
      * 器具の一覧に合わせてエンドポイントを増減し、属性を更新する。
      *
      * ⚠️ 同一性は **MAC** で取る。vAddr は変わり得るので使わない（docs/07-matter.md §7-4）。
+     *
+     * ⚠️ さらに **同じ MAC が 2 つの vAddr で来ることがある**（C34）。畳まずに回すと
+     * 幽霊のほう（`absent`）が後から上書きして、生きている器具を
+     * `Reachable = false` にしてしまう。→ `foldDevicesByMac`
      */
     private async reconcile(info: OdelicInfo): Promise<void> {
         const now = Date.now();
         const seen = new Set<string>();
+        const devices = foldDevicesByMac(info.devices, this.absent);
+        for (const key of foldedAwayKeys(info.devices, devices)) {
+            if (this.foldedKeys.has(key)) continue;
+            this.foldedKeys.add(key);
+            this.log(`[!] vAddr ${key} は既知の器具と同じ MAC でした。同じ 1 台として扱います`);
+        }
 
-        for (const device of info.devices) {
+        for (const device of devices) {
             const mac = normalizeMac(device.mac);
             if (isUnknownMac(mac)) continue; // MAC 未取得。エンドポイントを作れない
 

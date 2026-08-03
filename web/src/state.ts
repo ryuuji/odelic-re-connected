@@ -19,6 +19,9 @@
  *
  * ⚠️ `odelicd` は一度見つけた器具を `devices` から削除しない。
  * **`/info` に居ることは生きている証拠にならない**（docs/07 M6-4）。
+ *
+ * ⚠️ さらに **同じ器具が 2 つの vAddr で並ぶことがある**（C34）。
+ * `foldDevicesByMac()` で MAC ごとに 1 台へ畳んでから使う。
  */
 
 import {
@@ -27,6 +30,7 @@ import {
     capabilityOf,
     defaultFixtureName,
     describeRung,
+    foldDevicesByMac,
     isUnknownMac,
     ladder,
     normalizeMac,
@@ -156,7 +160,9 @@ export function buildState(
     }
 
     const fixtures: UiFixture[] = [];
-    for (const d of info.devices) {
+    // ⚠️ 同じ器具が別の vAddr で二重に見えることがある（C34）。畳まないと
+    //    同じ照明のカードが 2 枚並び、片方は「反応なし」と嘘をつく
+    for (const d of foldDevicesByMac(info.devices, absent)) {
         const mac = normalizeMac(d.mac);
         // ⚠️ MAC 未取得の器具はカードを作れない（同一性が取れないので名前も付かない）
         if (isUnknownMac(mac)) continue;

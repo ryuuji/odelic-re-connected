@@ -649,6 +649,10 @@ class Device:
     def __init__(self, mac: bytes, vaddr: bytes, version: str):
         self.mac = mac
         self.vaddr = vaddr
+        # ⭐ 実際に応答が返ってきた vAddr（C34）。同じ器具が複数の vAddr で
+        #    見えることがあり、**送信先はここを優先する**（登録された vAddr の
+        #    ほうが幽霊だった場合、そちらに送ると届かない）
+        self.reply_vaddr: bytes | None = None
         self.version = version
         self.product_code: int | None = None
         self.group_id: int | None = None
@@ -674,8 +678,17 @@ class Device:
 
     @property
     def key(self) -> str:
-        """API で器具を指定するためのキー。vAddr の 16 進。"""
+        """API で器具を指定するためのキー。vAddr の 16 進。
+
+        ⚠️ `self.devices` の辞書キーと必ず一致させる。ここを応答 vAddr で
+        書き換えると `dev:` 指定と `expect` がずれる（→ `target_vaddr`）。
+        """
         return self.vaddr.hex().upper()
+
+    @property
+    def target_vaddr(self) -> bytes:
+        """個別送信の宛先。⭐ 応答が返った vAddr があればそれを使う（C34）。"""
+        return self.reply_vaddr or self.vaddr
 
     @property
     def product_name(self) -> str:
@@ -716,6 +729,8 @@ class Device:
             "key": self.key,
             "mac": self.mac_str,
             "vaddr": hexs(self.vaddr),
+            # 応答が返った vAddr。登録時の vAddr と違えば C34 の別名が起きている
+            "reply_vaddr": hexs(self.reply_vaddr) if self.reply_vaddr else None,
             "product_code": self.product_code,
             "product": self.product_name,
             "group_id": self.group_id,
@@ -1065,6 +1080,19 @@ class Metrics:
                     # 電源が落ちている器具で到達率を汚さない
                     self.absent.add(key)
 
+    def forget(self, key: str) -> None:
+        """器具キーの計測値を捨てる（C34 で別名だと判った vAddr の後片付け）。
+
+        ⚠️ 残しておくと `/metrics` の到達率に「0%・応答なし」の幽霊が並び、
+        `absent` を見ている Matter ブリッジと設定ページが
+        **生きている器具を「通電が切れた」と誤判定する**。
+        """
+        with self.lock:
+            self.delivery.pop(key, None)
+            self.rtt.pop(key, None)
+            self.miss_streak.pop(key, None)
+            self.absent.discard(key)
+
     # -------------------------------------------------- 参照
 
     def worst_delivery(self) -> float:
@@ -1307,8 +1335,12 @@ class Daemon:
         self.link_up_at: float | None = None
         self.join_count = 0
         self.state = LightState()
-        # 探索応答から作る器具一覧（キー = vAddr の 16 進）
+        # 探索応答から作る器具一覧（キー = vAddr の 16 進）。
+        # ⭐ **MAC ごとに 1 台**しか入れない（同一性は MAC・docs/07 M6）
         self.devices: dict[str, Device] = {}
+        # ⚠️ 同じ器具が別の vAddr でも見えることがある（C34）。
+        #    別名 vAddr → 器具の正キー。他のリモコンが接続しているときに起きる
+        self.vaddr_alias: dict[str, str] = {}
         # GATT で接続してきた器具（キー = MAC）。これは D-Bus から取れる
         self.peers: dict[str, dict] = {}
         # ⭐ 生きている GATT リンク（キー = MAC）。権威は Device1.Connected。
@@ -1735,7 +1767,7 @@ class Daemon:
         # グループ ID の応答（MeshBlePresenter の GROUP_RESPONSE）
         #   params[7] = グループ ID
         if msgid == MSGID_GROUP_RESPONSE and len(params) >= 8:
-            key = src_vaddr.hex().upper()
+            key = self._resolve_key(src_vaddr)
             dev = self.devices.get(key)
             gid = params[7]
             if dev is None:
@@ -1748,7 +1780,8 @@ class Daemon:
             color_code, bright_code = params[0], params[1]
             # params[2] = ナイトライトの状態（0=消灯 / 1〜3、3 が最も明るい）。C24-6
             night_code = params[2] if len(params) >= 3 else None
-            key = src_vaddr.hex().upper()
+            # ⭐ 別名 vAddr で返ってきた応答も同じ 1 台として数える（C34）
+            key = self._resolve_key(src_vaddr)
 
             # 進行中の状態要求に対応づけて RTT を測る（in-flight は 1 本だけ）
             probe, dup = self.probe, False
@@ -1770,6 +1803,15 @@ class Daemon:
 
             self.state.apply_status(color_code, bright_code)
             dev = self.devices.get(key)
+            if dev is not None and dev.reply_vaddr != src_vaddr:
+                # ⭐ 応答が返ってくる vAddr こそ個別送信の正しい宛先（C34）。
+                #    登録時の vAddr が幽霊だった場合の保険になる
+                dev.reply_vaddr = src_vaddr
+                if src_vaddr != dev.vaddr:
+                    self.metrics.event(
+                        "vaddr_reply", mac=dev.mac_str, key=key,
+                        reply=src_vaddr.hex().upper(),
+                    )
             if dup:
                 # 状態の反映は冪等なので捨てて構わない。数だけ残す
                 if dev:
@@ -1922,28 +1964,78 @@ class Daemon:
             log(f"★ 接続してきた器具: {mac_str}（計 {len(self.peers)} 台）")
         return mac_str
 
-    def _register_device(
-        self, vaddr: bytes, mac: bytes | None, product_code: int | None
-    ) -> Device:
-        """器具を登録または更新する。"""
+    def _resolve_key(self, vaddr: bytes) -> str:
+        """受信した vAddr を器具の正キーに直す（C34）。
+
+        ⚠️ `self.lock` を持たずに呼んでよい（辞書の 1 回参照のみ）。
+        """
         key = vaddr.hex().upper()
+        return self.vaddr_alias.get(key, key)
+
+    def _register_device(
+        self,
+        vaddr: bytes,
+        mac: bytes | None,
+        product_code: int | None,
+        version: str | None = None,
+    ) -> Device:
+        """器具を登録または更新する。⭐ 同一性は **MAC** で取る（C34 / docs/07 M6）。
+
+        ⚠️ 同じ器具が **別の vAddr で二重に見えることがある**（他のリモコンが
+        メッシュに繋がっているときに観測）。vAddr をそのまま同一性に使うと
+        1 台が 2 台に増え、片方は永久に状態要求へ応答しない。
+        その幽霊は到達率 0% → `absent` になり、`absent` を
+        「通電が切れた唯一の判定手段」として見ている Matter ブリッジと設定ページが
+        **生きている器具を「反応なし・状態不明」と表示してしまう。**
+
+        そこで MAC が一致する先客が居たら、新しい vAddr は
+        **別名として束ねる**（器具は増やさない）。どちらの vAddr で応答が来ても
+        同じ 1 台として数えられる。
+        """
+        retired: str | None = None
         with self.lock:
+            key = vaddr.hex().upper()
+            alias = self.vaddr_alias.get(key)
+            if alias is not None:
+                twin = self.devices.get(alias)
+                # ⚠️ vAddr が別の器具に付け替わったら別名は無効
+                if twin is None or (mac and any(mac) and twin.mac != mac):
+                    self.vaddr_alias.pop(key, None)
+                else:
+                    key = alias
             dev = self.devices.get(key)
+            if dev is None and mac and any(mac):
+                twin_key = next((k for k, d in self.devices.items() if d.mac == mac), None)
+                if twin_key is not None:
+                    self.vaddr_alias[key] = twin_key
+                    retired, key = key, twin_key
+                    dev = self.devices[twin_key]
             if dev is None:
-                dev = Device(mac or bytes(6), vaddr, "")
+                dev = Device(mac or bytes(6), vaddr, version or "")
                 self.devices[key] = dev
                 new = True
             else:
                 new = False
                 if mac:
                     dev.mac = mac
+                if version:
+                    dev.version = version
             dev.last_seen = time.time()
             if product_code is not None:
                 dev.product_code = product_code
+            total = len(self.devices)
+        if retired is not None:
+            # 幽霊が既に到達率を汚していたら捨てる（0% の行を残さない）
+            self.metrics.forget(retired)
+            self.metrics.event("vaddr_alias", mac=dev.mac_str, alias=retired, key=key)
+            log(
+                f"⚠️ 同じ器具が別の vAddr で見えました: {dev.mac_str}"
+                f"  {retired} → {key} に束ねます（C34）"
+            )
         if new:
             log(
                 f"★ 器具を発見: {dev.mac_str}  vAddr={hexs(vaddr)}"
-                f"  製品={dev.product_name}  （計 {len(self.devices)} 台）"
+                f"  製品={dev.product_name}  （計 {total} 台）"
             )
         return dev
 
@@ -1965,20 +2057,8 @@ class Daemon:
         vaddr = data[12:16]
         product_version = data[16] | (data[17] << 8)
         version = f"0x{product_version:04X} fw{data[18]}.{data[19]}"
-        key = vaddr.hex().upper()
-
-        with self.lock:
-            dev = self.devices.get(key)
-            if dev is None:
-                dev = Device(mac, vaddr, version)
-                self.devices[key] = dev
-                log(
-                    f"★ 器具を発見: {dev.mac_str}  vAddr={hexs(vaddr)}  ver={version}"
-                    f"  （計 {len(self.devices)} 台）"
-                )
-            else:
-                dev.last_seen = time.time()
-                dev.version = version
+        # ⭐ 登録は 1 か所に寄せる（MAC ごとに 1 台に束ねる責任も含む・C34）
+        self._register_device(vaddr, mac, None, version)
 
     # -------------------------------------------------- 送信
 
@@ -2075,12 +2155,12 @@ class Daemon:
             dev = self.devices.get(key)
             if dev is None:
                 return []
-            return [make_light_dev(dev.vaddr, src, color_code, bright_code)]
+            return [make_light_dev(dev.target_vaddr, src, color_code, bright_code)]
 
         if target == "each":
             # 発見済みの器具を 1 台ずつ個別に叩く（一斉が効かない環境向けの保険）
             return [
-                make_light_dev(d.vaddr, src, color_code, bright_code)
+                make_light_dev(d.target_vaddr, src, color_code, bright_code)
                 for d in self.devices.values()
             ]
 
@@ -2314,9 +2394,11 @@ class Daemon:
             dev = self.devices.get(target.split(":", 1)[1].upper())
             if dev is None:
                 return False, f"unknown device: {target}"
-            pdus = [make_night_dev(dev.vaddr, src, level)]
+            pdus = [make_night_dev(dev.target_vaddr, src, level)]
         elif target == "each":
-            pdus = [make_night_dev(d.vaddr, src, level) for d in self.devices.values()]
+            pdus = [
+                make_night_dev(d.target_vaddr, src, level) for d in self.devices.values()
+            ]
         else:
             return False, f"unknown target: {target}"
 
@@ -2474,7 +2556,7 @@ class Daemon:
             dev = self.devices.get(target.split(":", 1)[1].upper())
             if dev is None:
                 return False, f"unknown device: {target}"
-            expect, pdu = {dev.key}, make_status_request(self.own_vaddr, dev.vaddr)
+            expect, pdu = {dev.key}, make_status_request(self.own_vaddr, dev.target_vaddr)
         else:
             # ⭐ dst = FF FF FF FF・チャネル 0x20 で送ると **1 通で全器具が応答する**
             #    （実測。チャネル 0x2A では無応答だった。C23-8）
@@ -2513,6 +2595,8 @@ class Daemon:
             "device_num": self.device_num,
             "devices_found": len(self.devices),
             "devices": [d.to_dict() for d in self.devices.values()],
+            # ⚠️ 同じ器具が別の vAddr でも見えたぶん（C34）。空が正常
+            "vaddr_alias": dict(self.vaddr_alias),
             # 接続してきた器具（GATT のリンク単位）
             "peers_found": len(self.peers),
             "peers": sorted(self.peers.values(), key=lambda p: p["mac"]),

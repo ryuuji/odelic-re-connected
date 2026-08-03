@@ -147,9 +147,20 @@ function deliveryCard(info, m) {
             ),
         ]);
     });
+    // ⚠️ 同じ器具が別の vAddr でも見えたぶん（C34）。他のリモコンが繋がっていると起きる
+    const alias = Object.entries(info.vaddr_alias ?? {});
     return card(
         el("h2", { text: "到達率" }),
         el("p", { class: "muted", text: "状態要求に応答が返った割合（直近が効く指数移動平均）。" }),
+        alias.length === 0
+            ? null
+            : notice(
+                  "",
+                  `${alias.length} 件の vAddr を同じ器具として束ねています`,
+                  "他のリモコンが接続していると、同じ照明が別のアドレスでも見えます。"
+                      + "1 台として数えているので影響はありません"
+                      + `（${alias.map(([from, to]) => `${from} → ${to}`).join(" / ")}）。`,
+              ),
         rows.length === 0
             ? el("p", { class: "muted", text: "まだ計測がありません。" })
             : el("div", { class: "scroll-x" }, [
