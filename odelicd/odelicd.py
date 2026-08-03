@@ -1324,6 +1324,8 @@ class Daemon:
         self._last_observed: bytes | None = None
         self._last_observed_at = 0.0
         self._confirm_seq = 0
+        # C34-4: 自分の vAddr を名乗る応答を見たことがあるか（ログを 1 回に絞る）
+        self._own_claims: set[str] = set()
         # C30: 分割 PDU の再組立（送信元ごと）
         self._segments: dict[str, dict] = {}
         self.segment_ok = 0
@@ -1772,6 +1774,8 @@ class Daemon:
             gid = params[7]
             if dev is None:
                 dev = self._register_device(src_vaddr, None, None)
+                if dev is None:
+                    return  # 自分の vAddr を名乗る応答（C34-4）
             dev.group_id = gid
             log(f"     グループ ID: {dev.mac_str or hexs(src_vaddr)} → {gid}")
             return
@@ -1972,13 +1976,27 @@ class Daemon:
         key = vaddr.hex().upper()
         return self.vaddr_alias.get(key, key)
 
+    def _note_own_claim(self, vaddr: bytes, mac: bytes | None) -> None:
+        """自分の vAddr を名乗る応答を記録する（C34-4）。初回だけログに出す。"""
+        self.metrics.bump("recv", "own_vaddr_claim")
+        seen = hexs(vaddr) in self._own_claims
+        self._own_claims.add(hexs(vaddr))
+        if seen:
+            return
+        who = ":".join(f"{b:02X}" for b in reversed(mac)) if mac and any(mac) else "MAC 不明"
+        self.metrics.event("own_vaddr_claim", vaddr=vaddr.hex().upper())
+        log(
+            f"⚠️ 自分の vAddr（{hexs(vaddr)}）を名乗る応答が来ました（{who}）。"
+            f"器具として登録しません（C34-4）"
+        )
+
     def _register_device(
         self,
         vaddr: bytes,
         mac: bytes | None,
         product_code: int | None,
         version: str | None = None,
-    ) -> Device:
+    ) -> Device | None:
         """器具を登録または更新する。⭐ 同一性は **MAC** で取る（C34 / docs/07 M6）。
 
         ⚠️ 同じ器具が **別の vAddr で二重に見えることがある**（他のリモコンが
@@ -1991,7 +2009,25 @@ class Daemon:
         そこで MAC が一致する先客が居たら、新しい vAddr は
         **別名として束ねる**（器具は増やさない）。どちらの vAddr で応答が来ても
         同じ 1 台として数えられる。
+
+        ⚠️⚠️ 実機で見つかった正体は **自分の vAddr** だった（C34-4）。
+        主リンクの器具の MAC と自分の vAddr を組にした Ping 応答が返ってくる。
+        自分は器具ではないので、その組では**新しい器具を作らない**（`None` を返す）。
+        既知の MAC なら、その 1 台の別名として束ねる。
+
+        @return 登録・更新した器具。自分の vAddr を名乗る未知の組なら `None`
         """
+        own = self.own_vaddr
+        if own is not None and vaddr == own:
+            self._note_own_claim(vaddr, mac)
+            with self.lock:
+                known = mac is not None and any(mac) and any(
+                    d.mac == mac for d in self.devices.values()
+                )
+            # 既知の MAC なら下で別名として束ねる。未知なら器具を作らない
+            if not known:
+                return None
+
         retired: str | None = None
         with self.lock:
             key = vaddr.hex().upper()
