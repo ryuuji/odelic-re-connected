@@ -16,6 +16,8 @@ export interface OdelicDevice {
     /** `EC:C5:7F:81:DE:CD` 形式。未取得なら `00:00:00:00:00:00`。⭐ 同一性はこれ */
     mac: string;
     vaddr: string;
+    /** ⭐ 状態要求に応答が返った回数。`0` なら器具ではない疑い（C34-5・古い odelicd は返さない） */
+    status_replies?: number;
     product_code: number | null;
     product: string;
     group_id: number | null;

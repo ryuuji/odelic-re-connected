@@ -23,6 +23,13 @@ export interface MacKeyedDevice {
     /** vAddr の 16 進。`absent` の判定キー */
     key: string;
     mac: string;
+    /**
+     * ⭐ 状態要求に応答が返った回数（C34-5）。`0` なら器具ではない疑い。
+     *
+     * ⚠️ 古い odelicd は返さない（`undefined`）。**そのときは判定に使わない**
+     * （`0` と混同すると全部を「器具ではない」にしてしまう）。
+     */
+    status_replies?: number;
     state_updated_at?: number | null;
     last_seen?: number;
 }
@@ -31,9 +38,13 @@ export interface MacKeyedDevice {
  * MAC が重複する器具を 1 台に畳む。順序は入力のまま（最初に現れた位置を保つ）。
  *
  * 優先順位は
- *   1. `absent` でない（＝状態要求に応答している）
- *   2. 状態が新しい（`state_updated_at`）
- *   3. 最後に見えたのが新しい（`last_seen`）
+ *   1. ⭐ 状態要求に一度でも応答したことがある（`status_replies`）
+ *   2. `absent` でない（＝いま応答している）
+ *   3. 状態が新しい（`state_updated_at`）
+ *   4. 最後に見えたのが新しい（`last_seen`）
+ *
+ * ⭐ 1 を 2 より上に置くのは、`absent` が立つ前（起動直後の数十秒）でも
+ * 正しい方を選べるようにするため。`absent` は 3 回の取りこぼしを待つ。
  *
  * @param absent 到達率が 0 になった vAddr キーの集合（`/metrics` の `delivery[].absent`）
  */
@@ -42,7 +53,10 @@ export function foldDevicesByMac<T extends MacKeyedDevice>(
     absent: ReadonlySet<string> = new Set(),
 ): T[] {
     const isAbsent = (d: T): boolean => absent.has(d.key.toUpperCase());
-    const rank = (d: T): [number, number, number] => [
+    // ⚠️ 古い odelicd は `status_replies` を返さない。そのときは差を付けない
+    const answered = (d: T): number => (d.status_replies === undefined ? 1 : d.status_replies > 0 ? 1 : 0);
+    const rank = (d: T): [number, number, number, number] => [
+        answered(d),
         isAbsent(d) ? 0 : 1,
         d.state_updated_at ?? 0,
         d.last_seen ?? 0,

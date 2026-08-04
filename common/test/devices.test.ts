@@ -68,6 +68,19 @@ describe("foldDevicesByMac", () => {
         assert.deepEqual(kept.map(d => d.key), ["02000000", "01000000"]);
     });
 
+    it("⭐ absent が立つ前でも、応答した実績がある方を残す（status_replies）", () => {
+        // ⚠️ absent は 3 回の取りこぼしを待つ。その前でも正しい方を選べること
+        const ghost = { key: "05000000", mac: MAC_A, status_replies: 0, state_updated_at: 200 };
+        const alive = { key: "01000000", mac: MAC_A, status_replies: 7, state_updated_at: 100 };
+        assert.deepEqual(foldDevicesByMac([ghost, alive]), [alive]);
+    });
+
+    it("⚠️ 古い odelicd（status_replies なし）では従来どおり absent で決める", () => {
+        const ghost = dev("05000000", MAC_A, 200);
+        const alive = dev("01000000", MAC_A, 100);
+        assert.deepEqual(foldDevicesByMac([ghost, alive], new Set(["05000000"])), [alive]);
+    });
+
     it("MAC 未取得（オール 0）の器具は畳んでしまうが、呼ぶ側が先に捨てている", () => {
         // ⚠️ この関数は MAC 未取得を特別扱いしない。`isUnknownMac` で先に落とす前提
         const kept = foldDevicesByMac([

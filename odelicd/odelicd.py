@@ -158,6 +158,11 @@ CODE_OFF = 0x32
 
 BROADCAST_VADDR = bytes([0xFF, 0xFF, 0xFF, 0xFF])
 
+# C34-5: 状態要求にこの回数連続で答えず、かつ一度も答えた実績がない登録は
+# 器具ではないと判断して一覧から外す。⚠️ `absent`（3 回）より大きくして、
+# 通電が切れただけの器具を巻き込まないようにする
+PHANTOM_MISSES = 6
+
 START = time.monotonic()
 _log_lock = threading.Lock()
 
@@ -404,9 +409,14 @@ def make_ping_all(src: bytes) -> bytes:
     [5]     0xFE          ← 専用チャネル。0x20 ではない
     [6..9]  送信元 vAddr
 
-    ⚠️ 実機では**応答が返ってこなかった**。公式アプリもこのチャネルを
-    使っていない（`getJoinCheckType() != 0` のときだけ呼ばれる条件付き）。
-    器具の探索には make_get_product_id / make_get_group_id を使う。
+    ⭐ **暗号化して送れば応答が返る**（実測 2026-08-04・C13 の追記）。
+    当初「応答が返ってこなかった」としていたのは平文で投げていたためで、
+    チャネルが使われていないわけではなかった。器具の **ファームウェア版**
+    （`version`）を埋めるのはこの経路だけなので、探索の 1 段目として使う
+    （`_auto_discover`: Ping → 0x02 → 0xD0 の順。C23-5）。
+
+    ⚠️⚠️ 応答には **器具でないもの** が混ざる（C34-4）。
+    payload の vAddr をそのまま器具として登録してはいけない（`_valid_ping_entry`）。
     """
     return bytes([PDU_DATA_EVENT]) + BROADCAST_VADDR + bytes([CH_PING]) + src
 
@@ -667,6 +677,12 @@ class Device:
         #    % に戻すと丸めで往復できなくなり、等値比較が壊れる
         self.obs_color_code: int | None = None
         self.obs_bright_code: int | None = None
+        # ⭐ 状態要求（0x70）に応答が返ってきた回数（C34-5）。
+        #    **0 のままなら器具ではない**（発見は応答でしか起きないので、
+        #    本物の器具は必ず 1 回は答える）。壁スイッチで落ちた器具と
+        #    幽霊を見分ける唯一の材料。⚠️ `state_updated_at` では代われない
+        #    （他コントローラの操作を観測しただけでも更新されるため）
+        self.status_replies = 0
         # ナイトライト（常夜灯）の状態。器具が返す 0〜3（0=消灯 / 3=最も明るい）
         self.night: int | None = None
         # 状態応答の生バイト（未解読フィールドの調査用）
@@ -731,6 +747,8 @@ class Device:
             "vaddr": hexs(self.vaddr),
             # 応答が返った vAddr。登録時の vAddr と違えば C34 の別名が起きている
             "reply_vaddr": hexs(self.reply_vaddr) if self.reply_vaddr else None,
+            # ⭐ 0 なら「発見はされたが状態要求に一度も答えていない」（C34-5）
+            "status_replies": self.status_replies,
             "product_code": self.product_code,
             "product": self.product_name,
             "group_id": self.group_id,
@@ -1816,6 +1834,9 @@ class Daemon:
                         "vaddr_reply", mac=dev.mac_str, key=key,
                         reply=src_vaddr.hex().upper(),
                     )
+            if dev is not None:
+                # ⭐ 「器具である」ことの唯一の証拠（C34-5）。重複でも 1 回は 1 回
+                dev.status_replies += 1
             if dup:
                 # 状態の反映は冪等なので捨てて構わない。数だけ残す
                 if dev:
@@ -2011,22 +2032,21 @@ class Daemon:
         同じ 1 台として数えられる。
 
         ⚠️⚠️ 実機で見つかった正体は **自分の vAddr** だった（C34-4）。
-        主リンクの器具の MAC と自分の vAddr を組にした Ping 応答が返ってくる。
-        自分は器具ではないので、その組では**新しい器具を作らない**（`None` を返す）。
-        既知の MAC なら、その 1 台の別名として束ねる。
+        主リンクの器具の MAC と自分の vAddr を組にした応答が返ってくる。
+        自分は器具ではないので、この組では**何も作らない**（`None` を返す）。
 
-        @return 登録・更新した器具。自分の vAddr を名乗る未知の組なら `None`
+        ⚠️ MAC が既知でも **別名として束ねない**。この vAddr の素性
+        （連結先の器具の別名なのか、同じ vAddr 枠を持つ別のコントローラなのか）が
+        確定していないため、器具の応答として到達率に数えると
+        **届いていないものを届いたと言うことになる**（P4 違反）。
+        本物の器具は自分の vAddr で 100% 応答するので、落として失うものはない。
+
+        @return 登録・更新した器具。自分の vAddr を名乗る組なら `None`
         """
         own = self.own_vaddr
         if own is not None and vaddr == own:
             self._note_own_claim(vaddr, mac)
-            with self.lock:
-                known = mac is not None and any(mac) and any(
-                    d.mac == mac for d in self.devices.values()
-                )
-            # 既知の MAC なら下で別名として束ねる。未知なら器具を作らない
-            if not known:
-                return None
+            return None
 
         retired: str | None = None
         with self.lock:
@@ -2073,6 +2093,15 @@ class Daemon:
                 f"★ 器具を発見: {dev.mac_str}  vAddr={hexs(vaddr)}"
                 f"  製品={dev.product_name}  （計 {total} 台）"
             )
+            # ⭐ 器具が参加時に申告した台数を超えたら、器具でないものを
+            #    数えている疑い（C34-4 はこの 1 行で気づけたはずだった）
+            num = self.device_num
+            if num is not None and total > num:
+                self.metrics.event("device_count_over", found=total, claimed=num)
+                log(
+                    f"⚠️ 登録が {total} 台になりましたが、器具の申告は {num} 台です。"
+                    f"器具でないものを数えている可能性があります（C34-4）"
+                )
         return dev
 
     def _handle_ping_response(self, data: bytes) -> None:
@@ -2085,6 +2114,10 @@ class Daemon:
 
         実測（C23-4）: `A6 28 80 7F C5 EC | 01 00 00 00 | C0 52 | 01 07`
         → MAC EC:C5:7F:80:28:A6 / vAddr 1 / 機種 0x52C0 / ファーム 1.7
+
+        ⚠️⚠️ **応答には器具でないものが混ざる**（C34-4）。
+        器具の申告台数（`device_num`）より多く登録されていたのが最初の手がかりだった。
+        レイアウトを鵜呑みにせず `_valid_ping_entry` で検査してから登録する。
         """
         if len(data) < 20:
             log(f"[!] Ping 応答が短い（{len(data)} バイト）: {hexs(data)}")
@@ -2093,8 +2126,33 @@ class Daemon:
         vaddr = data[12:16]
         product_version = data[16] | (data[17] << 8)
         version = f"0x{product_version:04X} fw{data[18]}.{data[19]}"
+        if not self._valid_ping_entry(mac, vaddr, data):
+            return
         # ⭐ 登録は 1 か所に寄せる（MAC ごとに 1 台に束ねる責任も含む・C34）
         self._register_device(vaddr, mac, None, version)
+
+    def _valid_ping_entry(self, mac: bytes, vaddr: bytes, data: bytes) -> bool:
+        """Ping 応答の 1 件が器具として筋が通っているか（C34-4）。
+
+        ⭐ 捨てた数を数えておく。黙って捨てると次に困る。
+        """
+        why: str | None = None
+        if not any(mac):
+            why = "MAC がオール 0"
+        elif not any(vaddr):
+            why = "vAddr がオール 0"
+        elif vaddr == BROADCAST_VADDR:
+            why = "vAddr がブロードキャスト"
+        elif self.own_vaddr is not None and vaddr == self.own_vaddr:
+            # ⚠️ ここは器具ではなく**自分**（または自分と同じ vAddr を持つ別の
+            #    コントローラ）。`_register_device` 側でも弾くが、
+            #    どちらの経路で来たかを分けて数えたいので理由を残す
+            why = "vAddr が自分と同じ"
+        if why is None:
+            return True
+        self.metrics.bump("recv", "ping_rejected")
+        log(f"[!] Ping 応答を器具として採らない（{why}）: {hexs(data[:20])}")
+        return False
 
     # -------------------------------------------------- 送信
 
@@ -2531,6 +2589,10 @@ class Daemon:
             self.metrics.note_delivery(key, ok)
             if not ok:
                 self.metrics.event("miss", vaddr=key, kind=p.kind, sends=p.sends)
+                # ⭐ 他の器具が答えている＝メッシュは生きている。それでも
+                #    一度も答えたことがないなら、それは器具ではない（C34-5）
+                if p.first:
+                    self._retire_if_phantom(key)
         self.metrics.bump("probe", "closed")
         if p.dups:
             self.metrics.bump("probe", "dups", sum(p.dups.values()))
@@ -2548,6 +2610,45 @@ class Daemon:
         )
         if self.dead_streak >= self.dead_after:
             self._handle_dead_link()
+
+    def _retire_if_phantom(self, key: str) -> None:
+        """一度も状態要求に答えていない登録を器具一覧から外す（C34-5）。
+
+        ⭐⭐ **発見は応答によってしか起きない。**だから本物の器具なら、
+        発見された時点で少なくとも 1 回は電波を返している。それなのに
+        状態要求（0x70）に一度も答えないものは、器具ではない
+        （実機で見つかったのは自分の vAddr を名乗る登録だった・C34-4）。
+
+        ⚠️ 壁スイッチで通電が切れた器具を消してはいけない。そちらは
+        **一度は答えている**（`status_replies > 0`）ので、ここでは触らない。
+        `absent` が立って `Reachable = false` になる従来どおりの扱いになる。
+
+        ⚠️ 呼ぶのは「他の器具が答えた要求で取りこぼした」ときだけ。
+        全員無応答（リンクが死んだ）ときに呼ぶと一覧を消してしまう。
+
+        外しても実害はない。次の探索で本物なら戻ってくる。
+        """
+        with self.lock:
+            dev = self.devices.get(key)
+            if dev is None or dev.status_replies > 0:
+                return
+            if self.metrics.miss_streak.get(key, 0) < PHANTOM_MISSES:
+                return
+            self.devices.pop(key, None)
+            # この器具を指していた別名も一緒に片付ける（C34）
+            aliases = [a for a, canon in self.vaddr_alias.items() if canon == key]
+            for a in aliases:
+                self.vaddr_alias.pop(a, None)
+            mac, total = dev.mac_str, len(self.devices)
+        self.metrics.forget(key)
+        for a in aliases:
+            self.metrics.forget(a)
+        self.metrics.event("phantom_device", vaddr=key, mac=mac, misses=PHANTOM_MISSES)
+        log(
+            f"⚠️ vAddr {key}（{mac}）は状態要求に {PHANTOM_MISSES} 回連続で答えず、"
+            f"一度も応答した実績がありません。器具ではないので一覧から外します"
+            f"（残り {total} 台・C34-5）"
+        )
 
     def _handle_dead_link(self) -> None:
         """状態要求に連続して誰も答えないので、リンクを作り直す。
