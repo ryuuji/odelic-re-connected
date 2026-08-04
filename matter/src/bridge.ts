@@ -414,13 +414,24 @@ export class Bridge {
 
         const now = Date.now();
         const suspects = new Set<string>();
+        let meshWide = false;
         for (const e of res.events) {
             const key = e.vaddr?.toUpperCase();
             if (key === undefined || this.absent.has(key)) continue;
             // ⚠️ 二重に見えていた vAddr（C34）は追い打ちしても無駄。BLE を使わない
             if (this.foldedKeys.has(key)) continue;
+            // ⚠️⚠️ 誰も答えていない要求（C35-2）。原因は器具ではなくメッシュ側なので
+            //    追い打ちは無駄なうえ、**混雑を増やして誤判定を自分で作る**。
+            //    odelicd 側が dead_link でリンクを作り直すのを待つ
+            if (e.answered === 0) {
+                meshWide = true;
+                continue;
+            }
             if (now - (this.lastFastProbe.get(key) ?? 0) < FAST_PROBE_COOLDOWN_MS) continue;
             suspects.add(key);
+        }
+        if (meshWide && suspects.size === 0) {
+            this.log("全器具が同時に応答しませんでした。器具ではなく入口の問題として扱います（追い打ちしません）");
         }
         if (suspects.size === 0) return false;
 

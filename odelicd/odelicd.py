@@ -1086,13 +1086,24 @@ class Metrics:
         if mac:
             self.link(mac).rtt.add(ms)
 
-    def note_delivery(self, key: str, ok: bool) -> None:
+    def note_delivery(self, key: str, ok: bool, blame: bool = True) -> None:
+        """到達率に 1 件反映する。
+
+        ⚠️ `blame=False` は「この取りこぼしを**器具のせいにしない**」（C35-2）。
+        全器具が同時に無応答なら原因はメッシュ側（入口）なので、
+        `absent`（= 通電が切れた）を立ててはいけない。
+        `absent` は Matter ブリッジと設定ページが「通電が切れた器具」を
+        見分ける唯一の材料なので、ここで誤ると**生きている照明が
+        「反応なし」と表示される。**
+
+        ⭐ 到達率（EWMA）には正直に入れる。届かなかったのは事実。
+        """
         with self.lock:
             self.delivery.setdefault(key, Ewma()).add(ok)
             if ok:
                 self.miss_streak[key] = 0
                 self.absent.discard(key)
-            else:
+            elif blame:
                 self.miss_streak[key] += 1
                 if self.miss_streak[key] >= 3:
                     # 電源が落ちている器具で到達率を汚さない
@@ -1321,6 +1332,9 @@ class Daemon:
         self.metrics = Metrics()
         # 進行中の状態要求。応答の対応づけのため in-flight は 1 本に限る
         self.probe: StatusProbe | None = None
+        # ⭐ 窓を閉じたが確定させていない要求（C35）。遅れて届いた応答を
+        #    ここで拾って「取りこぼし」を取り消す。締めかけも 1 本だけ持つ
+        self.settling: StatusProbe | None = None
         # 進行中の操作（キー = target）。新しい操作は同じ target の古いものを破棄する
         self.intents: dict[str, Intent] = {}
         self.max_attempts = 4
@@ -1805,9 +1819,12 @@ class Daemon:
             # ⭐ 別名 vAddr で返ってきた応答も同じ 1 台として数える（C34）
             key = self._resolve_key(src_vaddr)
 
-            # 進行中の状態要求に対応づけて RTT を測る（in-flight は 1 本だけ）
-            probe, dup = self.probe, False
-            if probe is not None and not probe.expired:
+            # 進行中の状態要求に対応づけて RTT を測る（in-flight は 1 本だけ）。
+            # ⭐ 窓が閉じていても、締めかけ（猶予中）の要求がまだ待っていれば
+            #    そちらに数える。**遅れて届いた応答は届いた応答である**（C35-1）
+            probe, late = self._match_probe(key)
+            dup = False
+            if probe is not None:
                 rtt = probe.note(key)
                 if rtt is None:
                     # 同じ応答が中継や自分の再送で複数回届いたぶん
@@ -1815,11 +1832,19 @@ class Daemon:
                     self.metrics.bump("recv", "status_dup")
                 else:
                     d0 = self.devices.get(key)
+                    # ⭐ 遅い応答も RTT に入れる。p90 が上がれば窓が自動で広がり、
+                    #    次の混雑では取りこぼさなくなる（負のフィードバックになる）
                     self.metrics.note_rtt(key, rtt, d0.mac_str if d0 else None)
                     self.metrics.event(
                         "rtt", vaddr=key, ms=round(rtt, 1), kind=probe.kind,
-                        sends=probe.sends,
+                        sends=probe.sends, late=1 if late else 0,
                     )
+                    if late:
+                        self.metrics.bump("recv", "status_late")
+                        # ⭐ 全員そろったら猶予を待たずに締める（後続の要求と
+                        #    対応づけが重ならないように）
+                        if not probe.missed():
+                            self._settle_probe(probe)
             else:
                 self.metrics.bump("recv", "status_unsolicited")
 
@@ -2559,6 +2584,34 @@ class Daemon:
         """1 回の状態要求で応答を待つ窓（ms）。RTT の p90 の 4 倍。"""
         return min(2500.0, max(500.0, self.metrics.rtt_p90() * 4))
 
+    def probe_grace_ms(self) -> float:
+        """窓を閉じたあと、遅れて届く応答を待つ猶予（ms）。C35。
+
+        ⚠️⚠️ **これが無いと、届いた応答を取りこぼしとして数えてしまう。**
+        実機では窓が閉じた **162 ms 後**に応答が届き、そのぶんが `miss` として
+        記録されて `absent` まで進み、Matter が生きている照明を
+        「反応なし」と報告した（C35-1）。メッシュが一瞬混むだけで起きる。
+        """
+        return min(1500.0, max(500.0, self.probe_window_ms()))
+
+    def _match_probe(self, key: str) -> tuple[StatusProbe | None, bool]:
+        """この応答を数えるべき要求と、それが「遅れて届いた」かを返す（C35）。
+
+        ⭐ **まだ待っている要求のうち古い方に数える**（FIFO）。器具は投げた順に
+        答えるので、古い要求こそがこの応答の相手。こうすると
+        「窓が閉じた直後に届いた応答」が取りこぼしを取り消せる。
+
+        ⚠️ どちらも既に受け取っていれば重複。数える先は新しい方にして、
+        重複カウンタが正しい要求に付くようにする。
+        """
+        for p, late in ((self.settling, True), (self.probe, False)):
+            if p is not None and key in p.expect and key not in p.first:
+                return p, late
+        for p, late in ((self.probe, False), (self.settling, True)):
+            if p is not None and key in p.first:
+                return p, late
+        return None, False
+
     def _open_probe(self, kind: str, expect: set[str], sends: int) -> StatusProbe:
         """状態要求の追跡を始める。
 
@@ -2580,28 +2633,62 @@ class Daemon:
         return False
 
     def _close_probe(self) -> None:
-        """窓が閉じた要求を締め、未応答を miss として到達率に反映する。"""
+        """窓を閉じる。⭐ **ここでは取りこぼしを確定しない**（C35）。
+
+        猶予（`probe_grace_ms`）のあいだ「締めかけ」として残し、遅れて届いた応答を
+        拾えるようにする。確定は `_settle_probe`。
+
+        ⚠️ 締めかけは 1 本だけ持つ。次の窓が閉じたら、前のぶんはそこで確定させる
+        （in-flight を 1 本に制限しているのと同じ理由で、対応づけを曖昧にしない）。
+        """
         p, self.probe = self.probe, None
         if p is None:
             return
-        for key in p.expect:
-            ok = key in p.first
-            self.metrics.note_delivery(key, ok)
-            if not ok:
-                self.metrics.event("miss", vaddr=key, kind=p.kind, sends=p.sends)
-                # ⭐ 他の器具が答えている＝メッシュは生きている。それでも
-                #    一度も答えたことがないなら、それは器具ではない（C34-5）
-                if p.first:
-                    self._retire_if_phantom(key)
         self.metrics.bump("probe", "closed")
         if p.dups:
             self.metrics.bump("probe", "dups", sum(p.dups.values()))
+        if not p.missed():
+            # 全員から返っている。猶予は要らない
+            self._settle_probe(p)
+            return
+        # 前の締めかけがまだ残っていたら、そちらを先に確定させる
+        if self.settling is not None:
+            self._settle_probe(self.settling)
+        self.settling = p
+        GLib.timeout_add(int(self.probe_grace_ms()), self._settle_probe_cb, p.id)
+
+    def _settle_probe_cb(self, probe_id: str) -> bool:
+        p = self.settling
+        if p is not None and p.id == probe_id:
+            self._settle_probe(p)
+        return False
+
+    def _settle_probe(self, p: StatusProbe) -> None:
+        """猶予が切れた要求を確定し、まだ来ていないぶんを miss にする。"""
+        if self.settling is not None and self.settling.id == p.id:
+            self.settling = None
+        answered = len(p.first)
+        for key in p.expect:
+            ok = key in p.first
+            # ⚠️ 到達率（EWMA）には正直に入れるが、**誰も答えていない要求で
+            #    器具個別の `absent`（= 通電が切れた）を立てない**（C35-2）。
+            #    全員同時に無応答なら原因はメッシュ側で、器具の故障ではない。
+            #    そちらは下の `dead_link` が担当する
+            self.metrics.note_delivery(key, ok, blame=answered > 0)
+            if not ok:
+                self.metrics.event(
+                    "miss", vaddr=key, kind=p.kind, sends=p.sends, answered=answered
+                )
+                # ⭐ 他の器具が答えている＝メッシュは生きている。それでも
+                #    一度も答えたことがないなら、それは器具ではない（C34-5）
+                if answered:
+                    self._retire_if_phantom(key)
 
         # ⭐ 誰も答えないなら入口が死んでいる疑い（GATT リンクは生きていても
         #    メッシュから外れていればコマンドは通らない）
         if not p.expect:
             return
-        if p.first:
+        if answered:
             self.dead_streak = 0
             return
         self.dead_streak += 1
@@ -2761,6 +2848,8 @@ class Daemon:
                 "resend": self.resend,
                 "confirm_delay_ms": round(self.confirm_delay_ms(), 1),
                 "probe_window_ms": round(self.probe_window_ms(), 1),
+                # C35: 窓を閉じたあと遅延応答を待つ猶予
+                "probe_grace_ms": round(self.probe_grace_ms(), 1),
                 "rtt_p90_ms": round(self.metrics.rtt_p90(), 1),
                 "worst_delivery": round(self.metrics.worst_delivery(), 4),
                 "dup_window_sec": self.dup_window,

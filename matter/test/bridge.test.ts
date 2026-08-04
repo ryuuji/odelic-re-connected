@@ -53,8 +53,11 @@ class StubOdelicd {
     failNextWith: number | null = null;
     /** 通電が切れた器具の vAddr キー（odelicd の metrics.delivery[].absent 相当） */
     absent = new Set<string>();
-    /** 未読の miss イベント（odelicd の GET /events?kind=miss 相当） */
-    missEvents: Array<{ ts: number; event: string; vaddr: string }> = [];
+    /**
+     * 未読の miss イベント（odelicd の GET /events?kind=miss 相当）。
+     * `answered` はその要求に応答した器具の数（C35-2）。`0` なら入口の問題。
+     */
+    missEvents: Array<{ ts: number; event: string; vaddr: string; answered?: number }> = [];
     /** dev: 宛の状態要求を受けた回数（追い打ちの検証用） */
     statusProbes: string[] = [];
 
@@ -723,6 +726,35 @@ describe("通電切れの検知を早める（追い打ちの状態要求）", (
         // ⭐ 疑わしい器具だけに打つ（もう片方には打たない）
         assert.ok(
             stub.statusProbes.every(t => t === "dev:01000000"),
+            `疑わしい器具以外にも打っている: ${JSON.stringify(stub.statusProbes)}`,
+        );
+    });
+
+    it("⚠️⚠️ 全器具が同時に無応答なら追い打ちしない（C35-2）", async () => {
+        // ⭐ 誰も答えていない = 原因は器具ではなくメッシュ側（入口）。
+        //    追い打ちは無駄なうえ、混雑を増やして誤判定を自分で作る。
+        //    実機ではこれが「生きている照明が 21 秒間 反応なし」になった
+        await quiesce(stub);
+        stub.statusProbes.length = 0;
+        const ts = Date.now() / 1000;
+        stub.missEvents.push({ ts, event: "miss", vaddr: "01000000", answered: 0 });
+        stub.missEvents.push({ ts, event: "miss", vaddr: "02000000", answered: 0 });
+
+        await new Promise(r => setTimeout(r, 2000));
+        assert.deepEqual(stub.statusProbes, [], "入口の問題に追い打ちしてはいけない");
+        // ⭐ 誤って absent にもしない
+        assert.equal(bridge.fixtureOf(MAC_A)!.endpoint.state.bridgedDeviceBasicInformation.reachable, true);
+        assert.equal(bridge.fixtureOf(MAC_B)!.endpoint.state.bridgedDeviceBasicInformation.reachable, true);
+    });
+
+    it("⭐ 他の器具が答えている取りこぼしには追い打ちする（通電切れの検知は速いまま）", async () => {
+        await quiesce(stub);
+        stub.statusProbes.length = 0;
+        // ⚠️ 直前のテストと同じ器具だとクールダウン（20 秒）に当たるので 02 を使う
+        stub.missEvents.push({ ts: Date.now() / 1000, event: "miss", vaddr: "02000000", answered: 1 });
+        await waitFor("追い打ちが打たれる", () => stub.statusProbes.length >= 2, 8000);
+        assert.ok(
+            stub.statusProbes.every(t => t === "dev:02000000"),
             `疑わしい器具以外にも打っている: ${JSON.stringify(stub.statusProbes)}`,
         );
     });

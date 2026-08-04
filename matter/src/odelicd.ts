@@ -76,6 +76,14 @@ export interface OdelicEvent {
     ts: number;
     event: string;
     vaddr?: string;
+    /**
+     * ⭐ `event: "miss"` で、その要求に**応答した器具の数**（C35-2）。
+     *
+     * `0` なら誰も答えていない = 原因は器具ではなくメッシュ側（入口）。
+     * 追い打ちをかけても無駄で、odelicd の `dead_link` が作り直す。
+     * ⚠️ 古い odelicd は返さない（`undefined`）。そのときは従来どおり追い打ちする。
+     */
+    answered?: number;
 }
 
 /** 操作の対象。odelicd の `?target=` に渡す文字列と 1:1。 */
