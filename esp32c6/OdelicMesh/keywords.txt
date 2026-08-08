@@ -1,0 +1,42 @@
+#######################################
+# Syntax Coloring Map for OdelicMesh
+#######################################
+
+OdelicMesh	KEYWORD1
+OdelicDevice	KEYWORD1
+
+begin	KEYWORD2
+joined	KEYWORD2
+linkUp	KEYWORD2
+ownVaddr	KEYWORD2
+deviceNum	KEYWORD2
+setDefaultGroup	KEYWORD2
+setColorKelvinRange	KEYWORD2
+setNightBand	KEYWORD2
+allOn	KEYWORD2
+allOff	KEYWORD2
+setAll	KEYWORD2
+nightAll	KEYWORD2
+setGroup	KEYWORD2
+onGroup	KEYWORD2
+offGroup	KEYWORD2
+nightGroup	KEYWORD2
+setDevice	KEYWORD2
+nightDevice	KEYWORD2
+setLight	KEYWORD2
+on	KEYWORD2
+off	KEYWORD2
+night	KEYWORD2
+matterOnOff	KEYWORD2
+matterSetLevel	KEYWORD2
+matterSetColorMireds	KEYWORD2
+matterSetColorKelvin	KEYWORD2
+matterReadState	KEYWORD2
+requestStatus	KEYWORD2
+discover	KEYWORD2
+deviceCount	KEYWORD2
+deviceAt	KEYWORD2
+deviceByVaddr	KEYWORD2
+onJoined	KEYWORD2
+onStatus	KEYWORD2
+setVerbose	KEYWORD2

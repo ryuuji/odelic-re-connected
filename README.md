@@ -24,6 +24,7 @@ Google Home / Apple Home / Alexa から音声で操作したり、スマート�
 - [バックアップを取る](#バックアップを取る)
 - [困ったとき](#困ったとき)
 - [HTTP API から使う](#http-api-から使う)
+- [マイコンから使う（ESP32-C6）](#マイコンから使うesp32-c6)
 - [できないこと](#できないこと)
 - [仕組みとドキュメント](#仕組みとドキュメント)
 
@@ -313,6 +314,30 @@ LAN に出すと同じネットワークにいる誰でも照明を操作でき�
 
 ---
 
+## マイコンから使う（ESP32-C6）
+
+Raspberry Pi を使わず、**ESP32-C6 単体で照明を操作する Arduino ライブラリ** を
+[`esp32c6/`](esp32c6/) に置いています。同じ解析結果からの移植で、メッシュへの参加も
+暗号処理もマイコンの中で完結します。
+
+```cpp
+#include <OdelicMesh.h>
+odelic::OdelicMesh light;
+
+void setup() { light.begin("12345678"); }                     // 8 桁 ID
+void loop()  { if (light.joined()) light.setLight(60, 50); }  // 明るさ 60% / 色温度 50%
+```
+
+サンプルは 4 つです。シリアルから対話操作する `SerialConsole`、
+押しボタン 2 個の `WallSwitch`、4 灯を個別に制御して演出も再生する `RoomController`、
+最小例の `BasicControl`。**壁スイッチの中に埋め込んで物理ボタンで操作できます。**
+
+Matter と HTTP API は Pi 側の担当なので、こちらにはありません。
+
+→ 使い方: [esp32c6/README.md](esp32c6/README.md)
+
+---
+
 ## できないこと
 
 安全のために、意図的に実装していない操作があります。器具の登録情報を壊すと、
@@ -349,6 +374,7 @@ ODELIC / Pairlink とは無関係の非公式プロジェクトです。自己�
 | [`matter/`](matter/) | Matter ブリッジ。照明を標準規格のデバイスとして公開します |
 | [`web/`](web/) | 設定ページとスマートフォン向け画面 |
 | [`common/`](common/) | 上の 2 つが共有する変換ロジック |
+| [`esp32c6/`](esp32c6/) | ESP32-C6 用の Arduino ライブラリとサンプル（Pi なしで動きます） |
 
 | 読みもの | 内容 |
 | --- | --- |
